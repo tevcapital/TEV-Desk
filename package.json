@@ -1,0 +1,16 @@
+{
+  "name": "tev-desk",
+  "productName": "TEV Desk",
+  "version": "0.1.0",
+  "description": "TEV Desk rebuilt with Electron + Groq",
+  "main": "src/main.js",
+  "dependencies": {
+    "electron-store": "^10.0.1",
+    "mammoth": "^1.10.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "asar": "^3.2.0",
+    "electron": "^41.1.1"
+  }
+}

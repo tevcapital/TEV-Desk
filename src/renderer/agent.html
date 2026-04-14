@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent</title>
+    <style>
+      :root {
+        --bg: #f2f6fb;
+        --card: #ffffff;
+        --ink: #10253f;
+        --muted: #5f7591;
+        --line: #d4deea;
+        --accent: #206cf4;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        height: 100vh;
+        display: grid;
+        grid-template-rows: auto auto auto 1fr auto;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        padding: 14px 16px 12px 80px;
+      }
+      #title { margin: 0; font-size: 18px; }
+      #subtitle { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+      .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .header-actions { display: flex; gap: 8px; }
+      .action {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--muted);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .action.primary {
+        border-color: #91b3f9;
+        background: #edf3ff;
+        color: #2455c6;
+        font-weight: 700;
+      }
+      .doc-shelf, .model-shelf, .news-shelf {
+        border-bottom: 1px solid var(--line);
+        background: #f7faff;
+        padding: 8px 12px;
+      }
+      .doc-shelf.empty, .news-shelf.empty { display: none; }
+      .shelf-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin-bottom: 6px;
+      }
+      .doc-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        color: var(--muted);
+        margin-right: 6px;
+        margin-bottom: 6px;
+      }
+      .doc-remove {
+        border: none;
+        background: transparent;
+        color: #8aa0bd;
+        font-size: 13px;
+        padding: 0;
+        cursor: pointer;
+      }
+      .model-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 12px;
+      }
+      .model-meta { color: var(--muted); }
+      .model-link {
+        border: none;
+        background: transparent;
+        color: var(--accent);
+        font-weight: 700;
+        cursor: pointer;
+        padding: 0;
+      }
+      .news-item {
+        font-size: 12px;
+        color: var(--ink);
+        padding: 2px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #chat {
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .msg {
+        max-width: 78%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+      .user {
+        align-self: flex-end;
+        background: var(--accent);
+        color: #fff;
+        border-bottom-right-radius: 4px;
+      }
+      .assistant {
+        align-self: flex-start;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-bottom-left-radius: 4px;
+      }
+      .status { color: var(--muted); font-size: 12px; }
+      .input-wrap {
+        border-top: 1px solid var(--line);
+        background: #fff;
+        padding: 12px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+      textarea {
+        width: 100%;
+        resize: none;
+        max-height: 150px;
+        min-height: 44px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 11px;
+        font: inherit;
+        outline: none;
+      }
+      button.send {
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        border-radius: 10px;
+        padding: 0 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .streaming::after {
+        content: '▋';
+        display: inline-block;
+        animation: blink 0.9s step-end infinite;
+        margin-left: 1px;
+        opacity: 0.7;
+      }
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-row">
+        <div>
+          <h1 id="title">Agent</h1>
+          <p id="subtitle">Loading...</p>
+        </div>
+        <div class="header-actions">
+          <button class="action" id="clearBtn">Clear chat</button>
+          <button class="action primary" id="uploadBtn">Upload</button>
+          <button class="action" id="warRoomBtn">War Room</button>
+          <button class="action" id="settingsBtn">Settings</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="doc-shelf empty" id="docShelf"></div>
+    <div class="model-shelf" id="modelShelf"></div>
+    <div class="news-shelf empty" id="newsShelf"></div>
+    <main id="chat"></main>
+
+    <div class="input-wrap">
+      <textarea id="input" placeholder="Ask the agent..."></textarea>
+      <button class="send" id="sendBtn">Send</button>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const agentId = params.get('agentId');
+      const chat = document.getElementById('chat');
+      const input = document.getElementById('input');
+      const sendBtn = document.getElementById('sendBtn');
+      const docShelf = document.getElementById('docShelf');
+      const newsShelf = document.getElementById('newsShelf');
+      const modelShelf = document.getElementById('modelShelf');
+      let agent = null;
+      let messages = [];
+      let newsItems = [];
+      let sending = false;
+
+      function sanitizeAssistantText(text) {
+        return String(text).replace(/^\s*(?:\[[A-Z0-9_-]+\]:\s*)+/i, '');
+      }
+
+      function appendMessage(role, content, streaming = false) {
+        const bubble = document.createElement('div');
+        bubble.className = `msg ${role}` + (streaming ? ' streaming' : '');
+        bubble.textContent = content;
+        chat.appendChild(bubble);
+        chat.scrollTop = chat.scrollHeight;
+        return bubble;
+      }
+
+      function renderMessages() {
+        chat.innerHTML = '';
+        messages.forEach((msg) => appendMessage(msg.role, msg.content));
+      }
+
+      async function renderModel() {
+        const model = await window.desk.getModel(agentId);
+        if (!model) {
+          modelShelf.innerHTML = `
+            <div class="model-summary">
+              <div>No saved model state.</div>
+              <button class="model-link" id="editModelBtn">Edit</button>
+            </div>
+          `;
+          document.getElementById('editModelBtn').addEventListener('click', editModel);
+          return;
+        }
+        modelShelf.innerHTML = `
+          <div class="shelf-label">Model State</div>
+          <div class="model-summary">
+            <div>
+              <div>${model.currentStance} · bull ${model.targets.bull.price} · base ${model.targets.base.price} · bear ${model.targets.bear.price}</div>
+              <div class="model-meta">${model.lastReviewNote}</div>
+            </div>
+            <div>
+              <button class="model-link" id="editModelBtn">Edit</button>
+              <button class="model-link" id="clearModelBtn">Clear</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('editModelBtn').addEventListener('click', editModel);
+        document.getElementById('clearModelBtn').addEventListener('click', async () => {
+          await window.desk.clearModel(agentId);
+          renderModel();
+        });
+      }
+
+      async function editModel() {
+        const current = await window.desk.getModel(agentId) || {
+          currentStance: 'neutral',
+          targets: { bull: { price: 0, label: '' }, base: { price: 0, label: '' }, bear: { price: 0, label: '' } },
+          keyAssumptions: [],
+          catalysts: [],
+          lastReviewNote: ''
+        };
+        const currentStance = prompt('Current stance', current.currentStance);
+        if (!currentStance) return;
+        const bullPrice = prompt('Bull price', current.targets.bull.price);
+        const bullLabel = prompt('Bull label', current.targets.bull.label);
+        const basePrice = prompt('Base price', current.targets.base.price);
+        const baseLabel = prompt('Base label', current.targets.base.label);
+        const bearPrice = prompt('Bear price', current.targets.bear.price);
+        const bearLabel = prompt('Bear label', current.targets.bear.label);
+        const assumptions = prompt('Key assumptions, separated by |', (current.keyAssumptions || []).join(' | '));
+        const review = prompt('Last review note', current.lastReviewNote || '');
+        const result = await window.desk.saveModel(agentId, {
+          currentStance,
+          targets: {
+            bull: { price: Number(bullPrice), label: bullLabel || '' },
+            base: { price: Number(basePrice), label: baseLabel || '' },
+            bear: { price: Number(bearPrice), label: bearLabel || '' }
+          },
+          keyAssumptions: String(assumptions || '').split('|').map((s) => s.trim()).filter(Boolean),
+          catalysts: current.catalysts || [],
+          lastReviewNote: review || ''
+        });
+        if (result.error) {
+          alert(result.error);
+          return;
+        }
+        renderModel();
+      }
+
+      async function renderDocs() {
+        const fresh = await window.desk.getAgent(agentId);
+        agent = fresh;
+        const docs = fresh.documents || [];
+        if (!docs.length) {
+          docShelf.className = 'doc-shelf empty';
+          docShelf.innerHTML = '';
+          return;
+        }
+        docShelf.className = 'doc-shelf';
+        docShelf.innerHTML = `
+          <div class="shelf-label">Documents</div>
+          ${docs.map((doc, i) => `<span class="doc-chip">${doc.name}<button class="doc-remove" data-index="${i}">×</button></span>`).join('')}
+        `;
+        docShelf.querySelectorAll('.doc-remove').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            await window.desk.removeDocument(agentId, Number(btn.dataset.index));
+            renderDocs();
+          });
+        });
+      }
+
+      function renderNews() {
+        if (!newsItems.length) {
+          newsShelf.className = 'news-shelf empty';
+          newsShelf.innerHTML = '';
+          return;
+        }
+        newsShelf.className = 'news-shelf';
+        newsShelf.innerHTML = `<div class="shelf-label">News Shelf</div>${newsItems.map((item) => `<div class="news-item">${item}</div>`).join('')}`;
+      }
+
+      async function send() {
+        const text = input.value.trim();
+        if (!text || sending) return;
+        input.value = '';
+        sending = true;
+        sendBtn.disabled = true;
+
+        const userMsg = { role: 'user', content: text };
+        messages.push(userMsg);
+        appendMessage('user', text);
+
+        const bubble = appendMessage('assistant', '', true);
+        let fullText = '';
+        window.desk.offStream();
+        window.desk.onStreamChunk(({ chunk }) => {
+          fullText += chunk;
+          bubble.textContent = fullText;
+          chat.scrollTop = chat.scrollHeight;
+        });
+        window.desk.onStreamSearching(({ query }) => {
+          bubble.textContent = `Searching: ${query}`;
+        });
+        window.desk.onStreamError(({ error }) => {
+          bubble.classList.remove('streaming');
+          bubble.textContent = `Error: ${error}`;
+          sending = false;
+          sendBtn.disabled = false;
+        });
+        window.desk.onStreamDone(async () => {
+          bubble.classList.remove('streaming');
+          bubble.textContent = sanitizeAssistantText(fullText);
+          messages.push({ role: 'assistant', content: sanitizeAssistantText(fullText) });
+          await window.desk.saveMessages(agentId, messages);
+          sending = false;
+          sendBtn.disabled = false;
+        });
+        window.desk.startStream(agentId, messages, newsItems, {}, false);
+      }
+
+      async function init() {
+        agent = await window.desk.getAgent(agentId);
+        messages = await window.desk.getMessages(agentId);
+        newsItems = await window.desk.fetchNews(agentId);
+        document.getElementById('title').textContent = agent.name;
+        document.getElementById('subtitle').textContent = `${agent.company} · ${agent.type}`;
+        renderMessages();
+        renderNews();
+        renderDocs();
+        renderModel();
+      }
+
+      document.getElementById('sendBtn').addEventListener('click', send);
+      document.getElementById('input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      });
+      document.getElementById('clearBtn').addEventListener('click', async () => {
+        messages = [];
+        await window.desk.clearMessages(agentId);
+        renderMessages();
+      });
+      document.getElementById('uploadBtn').addEventListener('click', async () => {
+        await window.desk.uploadDocuments(agentId);
+        renderDocs();
+      });
+      document.getElementById('settingsBtn').addEventListener('click', () => window.desk.openAgent('__settings__'));
+      document.getElementById('warRoomBtn').addEventListener('click', () => window.desk.openAgent('__warroom__'));
+
+      init();
+    </script>
+  </body>
+</html>

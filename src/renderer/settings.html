@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TEV Desk Settings</title>
+    <style>
+      :root {
+        --bg: #f2f6fb;
+        --card: #fff;
+        --ink: #132741;
+        --muted: #637892;
+        --line: #d5dfeb;
+        --accent: #1f6eff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 18px;
+      }
+      h1 { margin: 0 0 16px; font-size: 20px; }
+      .row { margin-bottom: 14px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+      input, select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        font-size: 13px;
+        background: #fff;
+        color: var(--ink);
+      }
+      select {
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23637892' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+      }
+      .toggle-row { display: flex; gap: 8px; margin-bottom: 18px; }
+      .toggle-btn {
+        flex: 1;
+        padding: 9px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+      .section { display: none; }
+      .section.visible { display: block; }
+      button#saveBtn {
+        margin-top: 4px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .hint { margin-top: 10px; font-size: 12px; color: var(--muted); }
+      #status { margin-left: 10px; font-size: 12px; color: #0f9a63; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>TEV Desk Settings</h1>
+
+      <div class="toggle-row">
+        <button class="toggle-btn" id="btnGroq" onclick="setMode('groq')">Groq</button>
+        <button class="toggle-btn" id="btnGemini" onclick="setMode('gemini')">Gemini</button>
+        <button class="toggle-btn" id="btnOpenRouter" onclick="setMode('openrouter')">OpenRouter</button>
+        <button class="toggle-btn" id="btnOllama" onclick="setMode('ollama')">Ollama</button>
+      </div>
+
+      <div class="section" id="sectionGroq">
+        <div class="row">
+          <label for="groqApiKey">Groq API Key</label>
+          <input id="groqApiKey" type="password" placeholder="gsk_..." />
+        </div>
+        <div class="row">
+          <label for="groqModel">Model</label>
+          <select id="groqModel">
+            <optgroup label="Meta Llama">
+              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (default)</option>
+              <option value="meta-llama/llama-4-scout-17b-16e-instruct">llama-4-scout-17b (newest)</option>
+              <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (fastest · separate pool)</option>
+            </optgroup>
+            <optgroup label="OpenAI OSS">
+              <option value="openai/gpt-oss-120b">gpt-oss-120b (largest)</option>
+              <option value="openai/gpt-oss-20b">gpt-oss-20b</option>
+            </optgroup>
+            <optgroup label="Qwen">
+              <option value="qwen/qwen3-32b">qwen3-32b (strong reasoning)</option>
+            </optgroup>
+            <optgroup label="Moonshot">
+              <option value="moonshotai/kimi-k2-instruct">kimi-k2 (strong reasoning)</option>
+            </optgroup>
+            <optgroup label="Groq">
+              <option value="groq/compound">compound (built-in web search)</option>
+              <option value="groq/compound-mini">compound-mini</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div class="section" id="sectionGemini">
+        <div class="row">
+          <label for="geminiApiKey">Gemini API Key</label>
+          <input id="geminiApiKey" type="password" placeholder="AIza..." />
+        </div>
+        <div class="row">
+          <label for="geminiModel">Model</label>
+          <select id="geminiModel">
+            <option value="gemini-2.0-flash">gemini-2.0-flash (recommended)</option>
+            <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (fastest)</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash (stable)</option>
+            <option value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash (best quality)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section" id="sectionOpenRouter">
+        <div class="row">
+          <label for="openrouterApiKey">OpenRouter API Key</label>
+          <input id="openrouterApiKey" type="password" placeholder="sk-or-..." />
+        </div>
+        <div class="row">
+          <label for="openrouterModel">Model</label>
+          <select id="openrouterModel">
+            <optgroup label="Recommended (free)">
+              <option value="meta-llama/llama-3.3-70b-instruct:free">llama-3.3-70b</option>
+              <option value="openai/gpt-oss-120b:free">gpt-oss-120b</option>
+              <option value="mistralai/mistral-small-3.1-24b-instruct:free">mistral-small-3.1-24b</option>
+            </optgroup>
+            <optgroup label="Qwen (free)">
+              <option value="qwen/qwen3-4b:free">qwen3-4b</option>
+              <option value="qwen/qwen3-coder:free">qwen3-coder</option>
+            </optgroup>
+            <optgroup label="Google (free)">
+              <option value="google/gemma-3-12b-it:free">gemma-3-12b</option>
+              <option value="google/gemma-3-27b-it:free">gemma-3-27b</option>
+            </optgroup>
+            <optgroup label="Nvidia (free)">
+              <option value="nvidia/nemotron-nano-12b-v2:free">nemotron-12b</option>
+              <option value="nvidia/nemotron-3-nano-30b-a3b:free">nemotron-30b</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div class="section" id="sectionOllama">
+        <div class="row">
+          <label for="ollamaUrl">Ollama URL</label>
+          <input id="ollamaUrl" type="text" placeholder="http://localhost:11434" />
+        </div>
+        <div class="row">
+          <label for="ollamaModel">Model</label>
+          <select id="ollamaModel"></select>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0 14px;" />
+      <div class="row">
+        <label for="tavilyApiKey">Tavily API Key — Web Search (optional)</label>
+        <input id="tavilyApiKey" type="password" placeholder="tvly-..." />
+      </div>
+
+      <button id="saveBtn">Save</button><span id="status"></span>
+    </div>
+
+    <script>
+      let currentMode = 'groq';
+      const modeIds = { groq: 'Groq', gemini: 'Gemini', openrouter: 'OpenRouter', ollama: 'Ollama' };
+
+      function setMode(mode) {
+        currentMode = mode;
+        Object.entries(modeIds).forEach(([m, id]) => {
+          document.getElementById('section' + id).className = 'section' + (mode === m ? ' visible' : '');
+          document.getElementById('btn' + id).className = 'toggle-btn' + (mode === m ? ' active' : '');
+        });
+      }
+
+      async function init() {
+        const [settings, ollamaModels] = await Promise.all([window.desk.getSettings(), window.desk.getOllamaModels()]);
+        setMode(settings.mode || 'groq');
+        document.getElementById('groqApiKey').value = settings.groqApiKey || '';
+        document.getElementById('geminiApiKey').value = settings.geminiApiKey || '';
+        document.getElementById('openrouterApiKey').value = settings.openrouterApiKey || '';
+        document.getElementById('tavilyApiKey').value = settings.tavilyApiKey || '';
+        document.getElementById('ollamaUrl').value = settings.ollamaUrl || 'http://localhost:11434';
+
+        const selects = [
+          ['groqModel', settings.groqModel || 'llama-3.3-70b-versatile'],
+          ['geminiModel', settings.geminiModel || 'gemini-2.0-flash'],
+          ['openrouterModel', settings.openrouterModel || 'qwen/qwen3-4b:free']
+        ];
+        for (const [id, value] of selects) {
+          const el = document.getElementById(id);
+          let found = false;
+          for (const opt of el.options) {
+            if (opt.value === value) { opt.selected = true; found = true; break; }
+          }
+          if (!found) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value;
+            opt.selected = true;
+            el.appendChild(opt);
+          }
+        }
+
+        const ollamaSelect = document.getElementById('ollamaModel');
+        const saved = settings.ollamaModel || 'qwen3.5:4b';
+        const list = ollamaModels.length ? ollamaModels : [saved];
+        list.forEach((m) => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m;
+          if (m === saved) opt.selected = true;
+          ollamaSelect.appendChild(opt);
+        });
+      }
+
+      document.getElementById('saveBtn').addEventListener('click', async () => {
+        const next = {
+          mode: currentMode,
+          groqApiKey: document.getElementById('groqApiKey').value.trim(),
+          groqModel: document.getElementById('groqModel').value || 'llama-3.3-70b-versatile',
+          geminiApiKey: document.getElementById('geminiApiKey').value.trim(),
+          geminiModel: document.getElementById('geminiModel').value || 'gemini-2.0-flash',
+          openrouterApiKey: document.getElementById('openrouterApiKey').value.trim(),
+          openrouterModel: document.getElementById('openrouterModel').value || 'qwen/qwen3-4b:free',
+          ollamaUrl: document.getElementById('ollamaUrl').value.trim() || 'http://localhost:11434',
+          ollamaModel: document.getElementById('ollamaModel').value || 'qwen3.5:4b',
+          tavilyApiKey: document.getElementById('tavilyApiKey').value.trim()
+        };
+        await window.desk.saveSettings(next);
+        const status = document.getElementById('status');
+        status.textContent = 'Saved';
+        setTimeout(() => { status.textContent = ''; }, 1800);
+      });
+
+      init();
+    </script>
+  </body>
+</html>

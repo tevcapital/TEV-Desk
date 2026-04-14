@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>War Room</title>
+    <style>
+      :root {
+        --bg: #f2f6fb;
+        --card: #ffffff;
+        --ink: #10253f;
+        --muted: #5f7591;
+        --line: #d4deea;
+        --accent: #206cf4;
+        --sidebar-w: 230px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        height: 100vh;
+        display: grid;
+        grid-template-columns: var(--sidebar-w) 1fr;
+        grid-template-rows: auto auto 1fr auto;
+      }
+      header {
+        grid-column: 1 / -1;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        padding: 14px 16px 12px 80px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .header-left h1 { margin: 0; font-size: 18px; }
+      .header-left p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+      .header-actions { display: flex; gap: 8px; }
+      .action {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--muted);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .action.primary {
+        border-color: #91b3f9;
+        background: #edf3ff;
+        color: #2455c6;
+        font-weight: 700;
+      }
+      .doc-shelf {
+        grid-column: 2;
+        border-bottom: 1px solid var(--line);
+        background: #f7faff;
+        padding: 7px 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .doc-shelf.empty { display: none; }
+      .doc-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 3px 9px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .doc-remove {
+        border: none;
+        background: transparent;
+        color: #8aa0bd;
+        font-size: 13px;
+        padding: 0;
+        cursor: pointer;
+      }
+      .sidebar {
+        grid-column: 1;
+        grid-row: 2 / 5;
+        border-right: 1px solid var(--line);
+        background: #fff;
+        overflow-y: auto;
+        padding: 10px 8px;
+      }
+      .sidebar-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        text-transform: uppercase;
+        padding: 6px 8px 4px;
+      }
+      .agent-btn {
+        width: 100%;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        padding: 8px;
+        cursor: pointer;
+        text-align: left;
+        margin-bottom: 2px;
+        font-family: inherit;
+      }
+      .agent-btn.active { background: #eef4ff; border-color: #b3ccff; }
+      .agent-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+      .agent-btn-name { font-size: 13px; font-weight: 700; color: var(--ink); }
+      .agent-btn-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+      .agent-model { font-size: 10px; color: var(--muted); margin-top: 3px; }
+      #chat {
+        grid-column: 2;
+        grid-row: 3;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .msg-wrap { display: flex; flex-direction: column; }
+      .msg-wrap.user { align-items: flex-end; }
+      .msg-wrap.assistant { align-items: flex-start; }
+      .msg-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        margin-bottom: 3px;
+        padding: 0 4px;
+      }
+      .msg {
+        max-width: 76%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+      .msg.user {
+        background: var(--accent);
+        color: #fff;
+        border-bottom-right-radius: 4px;
+      }
+      .msg.assistant {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-bottom-left-radius: 4px;
+      }
+      .streaming::after {
+        content: '▋';
+        display: inline-block;
+        animation: blink 0.9s step-end infinite;
+        margin-left: 1px;
+        opacity: 0.7;
+      }
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+      .input-wrap {
+        grid-column: 2;
+        grid-row: 4;
+        border-top: 1px solid var(--line);
+        background: #fff;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .speaking-to { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-weight: 600; }
+      .speaking-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .input-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; }
+      textarea {
+        width: 100%;
+        resize: none;
+        max-height: 120px;
+        min-height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 11px;
+        font: inherit;
+        font-size: 14px;
+        outline: none;
+      }
+      .send-btn, .ask-all-btn {
+        border-radius: 10px;
+        padding: 0 16px;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .send-btn {
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+      .ask-all-btn {
+        border: 1px solid #b45309;
+        background: #fef3c7;
+        color: #92400e;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-left">
+        <h1>War Room</h1>
+        <p id="modelStatus">Loading...</p>
+      </div>
+      <div class="header-actions">
+        <button class="action" id="clearBtn">Clear</button>
+        <button class="action primary" id="uploadBtn">Upload</button>
+        <button class="action" id="settingsBtn">Settings</button>
+      </div>
+    </header>
+
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="doc-shelf empty" id="docShelf"></div>
+    <main id="chat"></main>
+
+    <div class="input-wrap">
+      <div class="speaking-to">Speaking to: <span class="speaking-badge" id="speakingBadge">—</span></div>
+      <div class="input-row">
+        <textarea id="input" placeholder="Address the selected agent..."></textarea>
+        <button class="ask-all-btn" id="askAllBtn">⬡ Ask All</button>
+        <button class="send-btn" id="sendBtn">Send</button>
+      </div>
+    </div>
+
+    <script>
+      const AGENT_COLORS = {
+        FOUNDERS: '#0f766e',
+        CHIPS: '#2563eb',
+        BIGTECH: '#7c3aed',
+        AILABS: '#db2777',
+        CODERS: '#ea580c',
+        TECHVC: '#16a34a',
+        CHIEF: '#1e3a5f',
+        TENSION: '#991b1b'
+      };
+
+      const chat = document.getElementById('chat');
+      const input = document.getElementById('input');
+      const sendBtn = document.getElementById('sendBtn');
+      const askAllBtn = document.getElementById('askAllBtn');
+      const speakingBadge = document.getElementById('speakingBadge');
+      let agents = [];
+      let messages = [];
+      let activeAgentId = null;
+      let sending = false;
+      let warRoomDocs = [];
+
+      function colorFor(agentId) {
+        return AGENT_COLORS[agentId] || '#206cf4';
+      }
+
+      function setActiveAgent(agentId) {
+        activeAgentId = agentId;
+        speakingBadge.textContent = agentId;
+        speakingBadge.style.background = colorFor(agentId);
+        document.querySelectorAll('.agent-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.id === agentId));
+      }
+
+      function sanitizeAssistantText(text) {
+        return String(text).replace(/^\s*\[(?:[A-Z0-9_-]+)\]:\s*/i, '');
+      }
+
+      function trimMessages(list) {
+        return list.length > 320 ? list.slice(-320) : list;
+      }
+
+      function appendUserMsg(content) {
+        const wrap = document.createElement('div');
+        wrap.className = 'msg-wrap user';
+        const bubble = document.createElement('div');
+        bubble.className = 'msg user';
+        bubble.textContent = content;
+        wrap.appendChild(bubble);
+        chat.appendChild(wrap);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      function appendAgentBubble(agentId) {
+        const wrap = document.createElement('div');
+        wrap.className = 'msg-wrap assistant';
+        const label = document.createElement('div');
+        label.className = 'msg-label';
+        label.style.color = colorFor(agentId);
+        const agent = agents.find((a) => a.id === agentId);
+        label.textContent = agent ? `${agent.name} · ${agent.company}` : agentId;
+        const bubble = document.createElement('div');
+        bubble.className = 'msg assistant streaming';
+        wrap.appendChild(label);
+        wrap.appendChild(bubble);
+        chat.appendChild(wrap);
+        chat.scrollTop = chat.scrollHeight;
+        return bubble;
+      }
+
+      function renderMessages() {
+        chat.innerHTML = '';
+        messages.forEach((m) => {
+          if (m.role === 'user') {
+            appendUserMsg(m.content);
+            return;
+          }
+          const bubble = appendAgentBubble(m.agentId);
+          bubble.classList.remove('streaming');
+          bubble.textContent = m.content;
+        });
+      }
+
+      async function renderSidebar() {
+        const models = await Promise.all(agents.map((a) => window.desk.getModel(a.id)));
+        document.getElementById('modelStatus').textContent = `${agents.length} agents online`;
+        document.getElementById('sidebar').innerHTML = `
+          <div class="sidebar-label">Agents</div>
+          ${agents.map((agent, index) => `
+            <button class="agent-btn" data-id="${agent.id}">
+              <span class="agent-dot" style="background:${colorFor(agent.id)}"></span>
+              <span>
+                <div class="agent-btn-name">${agent.name}</div>
+                <div class="agent-btn-sub">${agent.company}</div>
+                <div class="agent-model">${agent.type}${models[index] ? ` · ${models[index].currentStance}` : ''}</div>
+              </span>
+            </button>
+          `).join('')}
+        `;
+        document.querySelectorAll('.agent-btn').forEach((btn) => btn.addEventListener('click', () => setActiveAgent(btn.dataset.id)));
+        if (!activeAgentId && agents.length) setActiveAgent(agents[0].id);
+      }
+
+      async function renderDocs() {
+        warRoomDocs = await window.desk.getWarRoomDocuments();
+        const shelf = document.getElementById('docShelf');
+        if (!warRoomDocs.length) {
+          shelf.className = 'doc-shelf empty';
+          shelf.innerHTML = '';
+          return;
+        }
+        shelf.className = 'doc-shelf';
+        shelf.innerHTML = warRoomDocs.map((doc, i) => `<span class="doc-chip">${doc.name}<button class="doc-remove" data-index="${i}">×</button></span>`).join('');
+        shelf.querySelectorAll('.doc-remove').forEach((btn) => btn.addEventListener('click', async () => {
+          await window.desk.removeWarRoomDocument(Number(btn.dataset.index));
+          renderDocs();
+        }));
+      }
+
+      function buildWarRoomMessagesForAgent(targetAgentId) {
+        const llmMessages = [];
+        for (const m of messages) {
+          if (m.role === 'user') {
+            llmMessages.push({ role: 'user', content: m.content });
+            continue;
+          }
+          if (m.agentId === targetAgentId) {
+            llmMessages.push({ role: 'assistant', content: m.content });
+          } else {
+            llmMessages.push({ role: 'user', content: `[War Room transcript - ${m.agentId} said]: ${m.content}` });
+          }
+        }
+        return llmMessages;
+      }
+
+      async function send() {
+        const text = input.value.trim();
+        if (!text || sending || !activeAgentId) return;
+        input.value = '';
+        appendUserMsg(text);
+        messages.push({ role: 'user', content: text, timestamp: Date.now() });
+        messages = trimMessages(messages);
+        await window.desk.saveWarRoomMessages(messages);
+
+        sending = true;
+        sendBtn.disabled = true;
+        askAllBtn.disabled = true;
+        const bubble = appendAgentBubble(activeAgentId);
+        let fullText = '';
+
+        window.desk.offStream();
+        window.desk.onStreamChunk(({ chunk }) => {
+          fullText += chunk;
+          bubble.textContent = fullText;
+        });
+        window.desk.onStreamSearching(({ query }) => {
+          bubble.textContent = `Searching: ${query}`;
+        });
+        window.desk.onStreamError(({ error }) => {
+          bubble.classList.remove('streaming');
+          bubble.textContent = `Error: ${error}`;
+          sending = false;
+          sendBtn.disabled = false;
+          askAllBtn.disabled = false;
+        });
+        window.desk.onStreamDone(async () => {
+          bubble.classList.remove('streaming');
+          const clean = sanitizeAssistantText(fullText);
+          bubble.textContent = clean;
+          messages.push({ role: 'assistant', agentId: activeAgentId, content: clean, timestamp: Date.now() });
+          messages = trimMessages(messages);
+          await window.desk.saveWarRoomMessages(messages);
+          sending = false;
+          sendBtn.disabled = false;
+          askAllBtn.disabled = false;
+        });
+        window.desk.startStream(activeAgentId, buildWarRoomMessagesForAgent(activeAgentId), [], {}, true);
+      }
+
+      async function askAll() {
+        const text = input.value.trim();
+        if (!text || sending) return;
+        input.value = '';
+        appendUserMsg(text);
+        messages.push({ role: 'user', content: text, timestamp: Date.now() });
+        messages = trimMessages(messages);
+        await window.desk.saveWarRoomMessages(messages);
+        sending = true;
+        sendBtn.disabled = true;
+        askAllBtn.disabled = true;
+
+        const bubbles = new Map();
+        window.desk.offAskAll();
+        window.desk.onAskAllAgentChunk(({ agentId, chunk }) => {
+          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
+          const bubble = bubbles.get(agentId);
+          bubble.textContent += chunk;
+        });
+        window.desk.onAskAllAgentSearching(({ agentId, query }) => {
+          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
+          bubbles.get(agentId).textContent = `Searching: ${query}`;
+        });
+        window.desk.onAskAllAgentDone(async ({ agentId, text }) => {
+          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
+          const bubble = bubbles.get(agentId);
+          bubble.classList.remove('streaming');
+          bubble.textContent = sanitizeAssistantText(text);
+          messages.push({ role: 'assistant', agentId, content: sanitizeAssistantText(text), timestamp: Date.now() });
+          messages = trimMessages(messages);
+          await window.desk.saveWarRoomMessages(messages);
+        });
+        window.desk.onAskAllAgentError(({ agentId, error }) => {
+          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
+          const bubble = bubbles.get(agentId);
+          bubble.classList.remove('streaming');
+          bubble.textContent = `Error: ${error}`;
+        });
+        window.desk.onAskAllComplete(async () => {
+          sending = false;
+          sendBtn.disabled = false;
+          askAllBtn.disabled = false;
+          await window.desk.saveWarRoomMessages(messages);
+        });
+        window.desk.onAskAllError(({ error }) => {
+          alert(error);
+          sending = false;
+          sendBtn.disabled = false;
+          askAllBtn.disabled = false;
+        });
+        window.desk.askAll(text, {});
+      }
+
+      async function init() {
+        agents = await window.desk.getAgents();
+        messages = await window.desk.getWarRoomMessages();
+        await renderSidebar();
+        await renderDocs();
+        renderMessages();
+      }
+
+      document.getElementById('sendBtn').addEventListener('click', send);
+      document.getElementById('askAllBtn').addEventListener('click', askAll);
+      document.getElementById('clearBtn').addEventListener('click', async () => {
+        messages = [];
+        await window.desk.clearWarRoomMessages();
+        renderMessages();
+      });
+      document.getElementById('uploadBtn').addEventListener('click', async () => {
+        await window.desk.uploadWarRoomDocuments();
+        renderDocs();
+      });
+      document.getElementById('settingsBtn').addEventListener('click', () => window.desk.openAgent('__settings__'));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      });
+
+      init();
+    </script>
+  </body>
+</html>
