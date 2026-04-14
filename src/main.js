@@ -42,8 +42,10 @@ const RETRY_CHAT_CHARS = 3000;
 
 const ALLOWED_STANCES = new Set(['strong_bull', 'constructive', 'neutral', 'cautious', 'bearish']);
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODELS_URL = 'https://api.groq.com/openai/v1/models';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const GROQ_MODEL_FALLBACKS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
 
 const MASTER_RESPONSE_SCAFFOLD = `GLOBAL RESPONSE RULES:
 - Keep answers short and direct.
@@ -525,6 +527,36 @@ async function searchWeb(query, tavilyApiKey) {
   }
 }
 
+async function fetchGroqModels(apiKey) {
+  const key = String(apiKey || '').trim();
+  if (!key) throw new Error('Groq API key is missing.');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(GROQ_MODELS_URL, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(String(data?.error?.message || data?.error || `Groq models request failed (${response.status}).`));
+    }
+
+    const models = Array.isArray(data?.data) ? data.data : [];
+    return models
+      .map((item) => String(item?.id || '').trim())
+      .filter(Boolean);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function parseFakeSearchWebCall(text = '') {
   const match = String(text).match(/<function=search_web>(\{[\s\S]*?\})<\/function>/i);
   if (!match) return null;
@@ -1000,6 +1032,18 @@ ipcMain.handle('warroom:remove-document', (_, { docIndex }) => {
 ipcMain.handle('agent:fetch-news', async (_, agentId) => fetchNewsForAgent(agentId));
 
 ipcMain.handle('settings:get', () => store.get('settings', {}));
+ipcMain.handle('settings:get-groq-models', async () => {
+  const settings = store.get('settings', {});
+  const apiKey = String(settings.groqApiKey || '').trim();
+  if (!apiKey) return GROQ_MODEL_FALLBACKS;
+
+  try {
+    const models = await fetchGroqModels(apiKey);
+    return models.length ? models : GROQ_MODEL_FALLBACKS;
+  } catch (_) {
+    return GROQ_MODEL_FALLBACKS;
+  }
+});
 ipcMain.handle('settings:save', (_, settings) => {
   const current = store.get('settings', {});
   store.set('settings', { ...current, ...settings });

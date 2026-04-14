@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('desk', {
   clearMessages: (agentId) => ipcRenderer.invoke('agent:clear-messages', agentId),
   fetchNews: (agentId) => ipcRenderer.invoke('agent:fetch-news', agentId),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  getGroqModels: () => ipcRenderer.invoke('settings:get-groq-models'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   getOllamaModels: () => ipcRenderer.invoke('ollama:get-models')
 });

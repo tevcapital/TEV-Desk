@@ -93,27 +93,7 @@
         </div>
         <div class="row">
           <label for="groqModel">Model</label>
-          <select id="groqModel">
-            <optgroup label="Meta Llama">
-              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (default)</option>
-              <option value="meta-llama/llama-4-scout-17b-16e-instruct">llama-4-scout-17b (newest)</option>
-              <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (fastest · separate pool)</option>
-            </optgroup>
-            <optgroup label="OpenAI OSS">
-              <option value="openai/gpt-oss-120b">gpt-oss-120b (largest)</option>
-              <option value="openai/gpt-oss-20b">gpt-oss-20b</option>
-            </optgroup>
-            <optgroup label="Qwen">
-              <option value="qwen/qwen3-32b">qwen3-32b (strong reasoning)</option>
-            </optgroup>
-            <optgroup label="Moonshot">
-              <option value="moonshotai/kimi-k2-instruct">kimi-k2 (strong reasoning)</option>
-            </optgroup>
-            <optgroup label="Groq">
-              <option value="groq/compound">compound (built-in web search)</option>
-              <option value="groq/compound-mini">compound-mini</option>
-            </optgroup>
-          </select>
+          <select id="groqModel"></select>
         </div>
       </div>
 
@@ -185,6 +165,10 @@
     <script>
       let currentMode = 'groq';
       const modeIds = { groq: 'Groq', gemini: 'Gemini', openrouter: 'OpenRouter', ollama: 'Ollama' };
+      const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+      const groqModelSelect = document.getElementById('groqModel');
+      const groqApiKeyInput = document.getElementById('groqApiKey');
+      let latestSettings = null;
 
       function setMode(mode) {
         currentMode = mode;
@@ -194,17 +178,65 @@
         });
       }
 
+      function populateSelect(selectEl, values, selectedValue, labelFormatter = null) {
+        selectEl.innerHTML = '';
+        const seen = new Set();
+        const ordered = [];
+        values.forEach((value) => {
+          const normalized = String(value || '').trim();
+          if (!normalized || seen.has(normalized)) return;
+          seen.add(normalized);
+          ordered.push(normalized);
+        });
+
+        if (selectedValue && !seen.has(selectedValue)) ordered.unshift(selectedValue);
+
+        ordered.forEach((value) => {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = labelFormatter ? labelFormatter(value) : value;
+          if (value === selectedValue) opt.selected = true;
+          selectEl.appendChild(opt);
+        });
+      }
+
+      async function refreshGroqModels(selectedValue = '') {
+        const models = await window.desk.getGroqModels();
+        const nextValue = selectedValue || groqModelSelect.value || DEFAULT_GROQ_MODEL;
+        populateSelect(
+          groqModelSelect,
+          models.length ? models : [DEFAULT_GROQ_MODEL],
+          nextValue,
+          (value) => value === DEFAULT_GROQ_MODEL ? `${value} (default)` : value
+        );
+      }
+
+      function collectDraftSettings() {
+        return {
+          mode: currentMode,
+          groqApiKey: groqApiKeyInput.value.trim(),
+          groqModel: groqModelSelect.value || DEFAULT_GROQ_MODEL,
+          geminiApiKey: document.getElementById('geminiApiKey').value.trim(),
+          geminiModel: document.getElementById('geminiModel').value || 'gemini-2.0-flash',
+          openrouterApiKey: document.getElementById('openrouterApiKey').value.trim(),
+          openrouterModel: document.getElementById('openrouterModel').value || 'qwen/qwen3-4b:free',
+          ollamaUrl: document.getElementById('ollamaUrl').value.trim() || 'http://localhost:11434',
+          ollamaModel: document.getElementById('ollamaModel').value || 'qwen3.5:4b',
+          tavilyApiKey: document.getElementById('tavilyApiKey').value.trim()
+        };
+      }
+
       async function init() {
         const [settings, ollamaModels] = await Promise.all([window.desk.getSettings(), window.desk.getOllamaModels()]);
+        latestSettings = settings;
         setMode(settings.mode || 'groq');
-        document.getElementById('groqApiKey').value = settings.groqApiKey || '';
+        groqApiKeyInput.value = settings.groqApiKey || '';
         document.getElementById('geminiApiKey').value = settings.geminiApiKey || '';
         document.getElementById('openrouterApiKey').value = settings.openrouterApiKey || '';
         document.getElementById('tavilyApiKey').value = settings.tavilyApiKey || '';
         document.getElementById('ollamaUrl').value = settings.ollamaUrl || 'http://localhost:11434';
 
         const selects = [
-          ['groqModel', settings.groqModel || 'llama-3.3-70b-versatile'],
           ['geminiModel', settings.geminiModel || 'gemini-2.0-flash'],
           ['openrouterModel', settings.openrouterModel || 'qwen/qwen3-4b:free']
         ];
@@ -223,6 +255,8 @@
           }
         }
 
+        await refreshGroqModels(settings.groqModel || DEFAULT_GROQ_MODEL);
+
         const ollamaSelect = document.getElementById('ollamaModel');
         const saved = settings.ollamaModel || 'qwen3.5:4b';
         const list = ollamaModels.length ? ollamaModels : [saved];
@@ -235,20 +269,19 @@
         });
       }
 
+      groqApiKeyInput.addEventListener('change', async () => {
+        latestSettings = await window.desk.saveSettings({
+          ...(latestSettings || {}),
+          ...collectDraftSettings()
+        });
+        await refreshGroqModels((latestSettings && latestSettings.groqModel) || groqModelSelect.value || DEFAULT_GROQ_MODEL);
+      });
+
       document.getElementById('saveBtn').addEventListener('click', async () => {
-        const next = {
-          mode: currentMode,
-          groqApiKey: document.getElementById('groqApiKey').value.trim(),
-          groqModel: document.getElementById('groqModel').value || 'llama-3.3-70b-versatile',
-          geminiApiKey: document.getElementById('geminiApiKey').value.trim(),
-          geminiModel: document.getElementById('geminiModel').value || 'gemini-2.0-flash',
-          openrouterApiKey: document.getElementById('openrouterApiKey').value.trim(),
-          openrouterModel: document.getElementById('openrouterModel').value || 'qwen/qwen3-4b:free',
-          ollamaUrl: document.getElementById('ollamaUrl').value.trim() || 'http://localhost:11434',
-          ollamaModel: document.getElementById('ollamaModel').value || 'qwen3.5:4b',
-          tavilyApiKey: document.getElementById('tavilyApiKey').value.trim()
-        };
-        await window.desk.saveSettings(next);
+        latestSettings = await window.desk.saveSettings({
+          ...(latestSettings || {}),
+          ...collectDraftSettings()
+        });
         const status = document.getElementById('status');
         status.textContent = 'Saved';
         setTimeout(() => { status.textContent = ''; }, 1800);
