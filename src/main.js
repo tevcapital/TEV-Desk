@@ -14,10 +14,20 @@ const store = new Store({
       mode: 'groq',
       groqApiKey: '',
       groqModel: 'llama-3.3-70b-versatile',
+      groqCustomModel: '',
       geminiApiKey: '',
       geminiModel: 'gemini-2.0-flash',
       openrouterApiKey: '',
       openrouterModel: 'qwen/qwen3-4b:free',
+      openrouterCustomModel: '',
+      anthropicApiKey: '',
+      anthropicModel: 'claude-opus-4-7',
+      anthropicCustomModel: '',
+      openaiApiKey: '',
+      openaiModel: 'gpt-5.4',
+      openaiCustomModel: '',
+      activeOpenLLMProvider: 'groq',
+      activeFrontierProvider: 'anthropic',
       ollamaModel: 'qwen3.5:4b',
       ollamaUrl: 'http://localhost:11434',
       tavilyApiKey: ''
@@ -45,6 +55,8 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS_URL = 'https://api.groq.com/openai/v1/models';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const GROQ_MODEL_FALLBACKS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
 
 const MASTER_RESPONSE_SCAFFOLD = `GLOBAL RESPONSE RULES:
@@ -435,10 +447,10 @@ function createSettingsWindow() {
   const existing = windows.get('settings');
   if (existing && !existing.isDestroyed()) return existing.focus();
   const win = createWindow('settings', {
-    width: 560,
-    height: 420,
-    minWidth: 520,
-    minHeight: 400,
+    width: 620,
+    height: 760,
+    minWidth: 560,
+    minHeight: 680,
     title: 'TEV Desk - Settings',
     backgroundColor: '#f4f7fb',
     titleBarStyle: 'hiddenInset'
@@ -573,16 +585,49 @@ function parseFakeSearchWebCall(text = '') {
   }
 }
 
+function resolveConfiguredModel(settings, primaryKey, customKey, fallback) {
+  const rawModel = String(settings?.[primaryKey] || '').trim();
+  if (rawModel !== 'custom') return rawModel || fallback;
+  const customModel = String(settings?.[customKey] || '').trim();
+  return customModel || fallback;
+}
+
 function getProviderConfig(settings) {
   const mode = settings.mode || 'groq';
-  if (mode === 'groq') return { mode, endpoint: GROQ_URL, apiKey: settings.groqApiKey, model: settings.groqModel, extraHeaders: {} };
+  if (mode === 'groq') {
+    return {
+      mode,
+      endpoint: GROQ_URL,
+      apiKey: settings.groqApiKey,
+      model: resolveConfiguredModel(settings, 'groqModel', 'groqCustomModel', 'llama-3.3-70b-versatile'),
+      extraHeaders: {}
+    };
+  }
   if (mode === 'gemini') return { mode, endpoint: GEMINI_URL, apiKey: settings.geminiApiKey, model: settings.geminiModel, extraHeaders: {} };
+  if (mode === 'anthropic') {
+    return {
+      mode,
+      endpoint: ANTHROPIC_URL,
+      apiKey: settings.anthropicApiKey,
+      model: resolveConfiguredModel(settings, 'anthropicModel', 'anthropicCustomModel', 'claude-opus-4-7'),
+      extraHeaders: {}
+    };
+  }
+  if (mode === 'openai') {
+    return {
+      mode,
+      endpoint: OPENAI_URL,
+      apiKey: settings.openaiApiKey,
+      model: resolveConfiguredModel(settings, 'openaiModel', 'openaiCustomModel', 'gpt-5.4'),
+      extraHeaders: {}
+    };
+  }
   if (mode === 'openrouter') {
     return {
       mode,
       endpoint: OPENROUTER_URL,
       apiKey: settings.openrouterApiKey,
-      model: settings.openrouterModel,
+      model: resolveConfiguredModel(settings, 'openrouterModel', 'openrouterCustomModel', 'qwen/qwen3-4b:free'),
       extraHeaders: { 'HTTP-Referer': 'https://tevdesk.local', 'X-Title': 'TEV Desk' }
     };
   }
@@ -599,6 +644,51 @@ function makeToolDef(tavilyApiKey) {
       parameters: { type: 'object', properties: { query: { type: 'string', description: 'The search query' } }, required: ['query'] }
     }
   }];
+}
+
+function normalizeMessageContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item?.type === 'text') return String(item.text || '');
+        return '';
+      })
+      .join('');
+  }
+  return '';
+}
+
+function getReadableApiError(data, fallback) {
+  return String(
+    data?.error?.message ||
+    data?.error?.error?.message ||
+    data?.error ||
+    data?.message ||
+    fallback
+  );
+}
+
+function getAnthropicMessages(messages = []) {
+  return messages
+    .filter((msg) => msg?.role === 'user' || msg?.role === 'assistant')
+    .map((msg) => ({
+      role: msg.role,
+      content: normalizeMessageContent(msg.content)
+    }));
+}
+
+function getOpenAIMessages(systemPrompt, messages = []) {
+  return [
+    { role: 'system', content: systemPrompt },
+    ...messages
+      .filter((msg) => msg?.role === 'user' || msg?.role === 'assistant')
+      .map((msg) => ({
+        role: msg.role,
+        content: normalizeMessageContent(msg.content)
+      }))
+  ];
 }
 
 async function pipeSSEStream(body, sender, events = { chunk: 'agent:stream-chunk', done: 'agent:stream-done', error: 'agent:stream-error' }, meta = {}) {
@@ -671,6 +761,113 @@ async function pipeOllamaStream(body, sender, events = { chunk: 'agent:stream-ch
     if (!sender.isDestroyed()) sender.send(events.error, { ...meta, error: err.message });
     return { ok: false, error: err.message, text: fullText };
   }
+}
+
+async function pipeAnthropicStream(body, sender, events = { chunk: 'agent:stream-chunk', done: 'agent:stream-done', error: 'agent:stream-error' }, meta = {}) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop();
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        let eventType = '';
+        let data = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+          if (line.startsWith('data: ')) data += line.slice(6);
+        }
+        if (!data) continue;
+        let parsed;
+        try {
+          parsed = JSON.parse(data);
+        } catch (_) {
+          continue;
+        }
+        const type = eventType || parsed?.type || '';
+        if (type === 'content_block_delta') {
+          const chunk = parsed?.delta?.text;
+          if (chunk) {
+            fullText += chunk;
+            if (!sender.isDestroyed()) sender.send(events.chunk, { ...meta, chunk });
+          }
+        } else if (type === 'error') {
+          throw new Error(getReadableApiError(parsed, 'Anthropic streaming failed.'));
+        } else if (type === 'message_stop') {
+          if (!sender.isDestroyed()) sender.send(events.done, { ...meta, text: fullText });
+          return { ok: true, text: fullText };
+        }
+      }
+    }
+    if (!sender.isDestroyed()) sender.send(events.done, { ...meta, text: fullText });
+    return { ok: true, text: fullText };
+  } catch (err) {
+    if (!sender.isDestroyed()) sender.send(events.error, { ...meta, error: err.message });
+    return { ok: false, error: err.message, text: fullText };
+  }
+}
+
+async function callAnthropic(systemPrompt, messages, model, apiKey, stream = false, sender = null, events = { chunk: 'agent:stream-chunk', done: 'agent:stream-done', error: 'agent:stream-error' }, meta = {}) {
+  const response = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: getAnthropicMessages(messages),
+      stream
+    })
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(getReadableApiError(data, `Anthropic request failed (${response.status}).`));
+  }
+
+  if (stream) return pipeAnthropicStream(response.body, sender, events, meta);
+
+  const data = await response.json();
+  return (Array.isArray(data?.content) ? data.content : [])
+    .filter((item) => item?.type === 'text')
+    .map((item) => String(item.text || ''))
+    .join('');
+}
+
+async function callOpenAI(systemPrompt, messages, model, apiKey, stream = false, sender = null, events = { chunk: 'agent:stream-chunk', done: 'agent:stream-done', error: 'agent:stream-error' }, meta = {}) {
+  const response = await fetch(OPENAI_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      messages: getOpenAIMessages(systemPrompt, messages),
+      stream
+    })
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(getReadableApiError(data, `OpenAI request failed (${response.status}).`));
+  }
+
+  if (stream) return pipeSSEStream(response.body, sender, events, meta);
+
+  const data = await response.json();
+  return normalizeMessageContent(data?.choices?.[0]?.message?.content);
 }
 
 async function pipeGroqStreamWithTools(payload, apiKey, tavilyApiKey, sender, endpoint = GROQ_URL, extraHeaders = {}) {
@@ -1065,7 +1262,15 @@ ipcMain.handle('ollama:get-models', async () => {
 ipcMain.handle('agent:send-message', async (_, { agentId, messages = [], newsItems = [] }) => {
   try {
     const primary = await buildPromptMessages(agentId, messages, newsItems, false, NORMAL_DOC_TOTAL_CHARS, NORMAL_CHAT_CHARS);
-    const responseText = await completeChat([{ role: 'system', content: primary.systemPrompt }, ...primary.chatMessages], primary.settings);
+    const provider = getProviderConfig(primary.settings);
+    let responseText = '';
+    if (provider.mode === 'anthropic') {
+      responseText = await callAnthropic(primary.systemPrompt, primary.chatMessages, provider.model, provider.apiKey, false);
+    } else if (provider.mode === 'openai') {
+      responseText = await callOpenAI(primary.systemPrompt, primary.chatMessages, provider.model, provider.apiKey, false);
+    } else {
+      responseText = await completeChat([{ role: 'system', content: primary.systemPrompt }, ...primary.chatMessages], primary.settings);
+    }
     return { text: sanitizeVisibleAssistantText(responseText) };
   } catch (error) {
     return { error: error.message };
@@ -1091,6 +1296,16 @@ ipcMain.on('agent:start-stream', async (event, { agentId, messages = [], newsIte
       });
       if (!response.ok) throw new Error(`Ollama request failed (${response.status}).`);
       await pipeOllamaStream(response.body, sender);
+      return;
+    }
+
+    if (provider.mode === 'anthropic') {
+      await callAnthropic(promptBundle.systemPrompt, promptBundle.chatMessages, provider.model, provider.apiKey, true, sender);
+      return;
+    }
+
+    if (provider.mode === 'openai') {
+      await callOpenAI(promptBundle.systemPrompt, promptBundle.chatMessages, provider.model, provider.apiKey, true, sender);
       return;
     }
 
@@ -1148,6 +1363,12 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
         });
         const result = await pipeOllamaStream(response.body, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
+      } else if (provider.mode === 'anthropic') {
+        const result = await callAnthropic(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
+      } else if (provider.mode === 'openai') {
+        const result = await callOpenAI(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
       } else {
         const result = await pipeGroqStreamTagged(payload, provider.apiKey, settings.tavilyApiKey, sender, provider.endpoint, { agentId }, provider.extraHeaders);
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
@@ -1185,6 +1406,10 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
           body: JSON.stringify({ model: provider.model, stream: true, messages: payload.messages })
         });
         await pipeOllamaStream(response.body, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+      } else if (provider.mode === 'anthropic') {
+        await callAnthropic(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+      } else if (provider.mode === 'openai') {
+        await callOpenAI(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else {
         await pipeGroqStreamTagged(payload, provider.apiKey, settings.tavilyApiKey, sender, provider.endpoint, { agentId }, provider.extraHeaders);
       }

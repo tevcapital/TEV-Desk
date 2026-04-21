@@ -12,6 +12,7 @@
         --muted: #637892;
         --line: #d5dfeb;
         --accent: #1f6eff;
+        --danger: #d74b4b;
       }
       * { box-sizing: border-box; }
       body {
@@ -61,6 +62,59 @@
       .toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
       .section { display: none; }
       .section.visible { display: block; }
+      .section-copy {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .radio-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin: 0 0 18px;
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+      }
+      .radio-label {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-right: 2px;
+      }
+      .radio-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--ink);
+      }
+      .radio-option input {
+        width: auto;
+        margin: 0;
+      }
+      .provider-block {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        margin-bottom: 12px;
+      }
+      .provider-title {
+        margin: 0 0 12px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .paid-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-left: 6px;
+        border-radius: 999px;
+        background: var(--danger);
+        vertical-align: middle;
+      }
       button#saveBtn {
         margin-top: 4px;
         border: 1px solid var(--accent);
@@ -71,7 +125,6 @@
         font-weight: 700;
         cursor: pointer;
       }
-      .hint { margin-top: 10px; font-size: 12px; color: var(--muted); }
       #status { margin-left: 10px; font-size: 12px; color: #0f9a63; }
     </style>
   </head>
@@ -80,76 +133,122 @@
       <h1>TEV Desk Settings</h1>
 
       <div class="toggle-row">
-        <button class="toggle-btn" id="btnGroq" onclick="setMode('groq')">Groq</button>
-        <button class="toggle-btn" id="btnGemini" onclick="setMode('gemini')">Gemini</button>
-        <button class="toggle-btn" id="btnOpenRouter" onclick="setMode('openrouter')">OpenRouter</button>
-        <button class="toggle-btn" id="btnOllama" onclick="setMode('ollama')">Ollama</button>
+        <button class="toggle-btn" id="btnOpenLLMs" onclick="setTab('openllms')">Open LLMs</button>
+        <button class="toggle-btn" id="btnOllama" onclick="setTab('ollama')">Ollama</button>
+        <button class="toggle-btn" id="btnFrontier" onclick="setTab('frontier')">Frontier <span class="paid-indicator" aria-hidden="true"></span></button>
       </div>
 
-      <div class="section" id="sectionGroq">
-        <div class="row">
-          <label for="groqApiKey">Groq API Key</label>
-          <input id="groqApiKey" type="password" placeholder="gsk_..." />
-        </div>
-        <div class="row">
-          <label for="groqModel">Model</label>
-          <select id="groqModel"></select>
-        </div>
-      </div>
+      <div class="section" id="sectionOpenLLMs">
+        <p class="section-copy">Fast, cheap inference for open-weight models.</p>
 
-      <div class="section" id="sectionGemini">
-        <div class="row">
-          <label for="geminiApiKey">Gemini API Key</label>
-          <input id="geminiApiKey" type="password" placeholder="AIza..." />
+        <div class="radio-row">
+          <span class="radio-label">Active Provider</span>
+          <label class="radio-option"><input type="radio" name="activeOpenLLMProvider" value="groq" /> Groq</label>
+          <label class="radio-option"><input type="radio" name="activeOpenLLMProvider" value="openrouter" /> OpenRouter</label>
         </div>
-        <div class="row">
-          <label for="geminiModel">Model</label>
-          <select id="geminiModel">
-            <option value="gemini-2.0-flash">gemini-2.0-flash (recommended)</option>
-            <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (fastest)</option>
-            <option value="gemini-1.5-flash">gemini-1.5-flash (stable)</option>
-            <option value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash (best quality)</option>
-          </select>
-        </div>
-      </div>
 
-      <div class="section" id="sectionOpenRouter">
-        <div class="row">
-          <label for="openrouterApiKey">OpenRouter API Key</label>
-          <input id="openrouterApiKey" type="password" placeholder="sk-or-..." />
+        <div class="provider-block">
+          <div class="provider-title">Groq</div>
+          <div class="row">
+            <label for="groqApiKey">Groq API Key</label>
+            <input id="groqApiKey" type="password" placeholder="gsk_..." />
+          </div>
+          <div class="row" style="margin-bottom: 0;">
+            <label for="groqModel">Groq Model</label>
+            <select id="groqModel"></select>
+            <input id="groqCustomModelInput" type="text" placeholder="Enter custom Groq model ID" style="display: none; margin-top: 8px;" />
+          </div>
         </div>
-        <div class="row">
-          <label for="openrouterModel">Model</label>
-          <select id="openrouterModel">
-            <optgroup label="Recommended (free)">
-              <option value="meta-llama/llama-3.3-70b-instruct:free">llama-3.3-70b</option>
-              <option value="openai/gpt-oss-120b:free">gpt-oss-120b</option>
-              <option value="mistralai/mistral-small-3.1-24b-instruct:free">mistral-small-3.1-24b</option>
-            </optgroup>
-            <optgroup label="Qwen (free)">
-              <option value="qwen/qwen3-4b:free">qwen3-4b</option>
-              <option value="qwen/qwen3-coder:free">qwen3-coder</option>
-            </optgroup>
-            <optgroup label="Google (free)">
-              <option value="google/gemma-3-12b-it:free">gemma-3-12b</option>
-              <option value="google/gemma-3-27b-it:free">gemma-3-27b</option>
-            </optgroup>
-            <optgroup label="Nvidia (free)">
-              <option value="nvidia/nemotron-nano-12b-v2:free">nemotron-12b</option>
-              <option value="nvidia/nemotron-3-nano-30b-a3b:free">nemotron-30b</option>
-            </optgroup>
-          </select>
+
+        <div class="provider-block" style="margin-bottom: 0;">
+          <div class="provider-title">OpenRouter</div>
+          <div class="row">
+            <label for="openrouterApiKey">OpenRouter API Key</label>
+            <input id="openrouterApiKey" type="password" placeholder="sk-or-..." />
+          </div>
+          <div class="row" style="margin-bottom: 0;">
+            <label for="openrouterModel">OpenRouter Model</label>
+            <select id="openrouterModel">
+              <optgroup label="Recommended (free)">
+                <option value="meta-llama/llama-3.3-70b-instruct:free">llama-3.3-70b</option>
+                <option value="openai/gpt-oss-120b:free">gpt-oss-120b</option>
+                <option value="mistralai/mistral-small-3.1-24b-instruct:free">mistral-small-3.1-24b</option>
+              </optgroup>
+              <optgroup label="Qwen (free)">
+                <option value="qwen/qwen3-4b:free">qwen3-4b</option>
+                <option value="qwen/qwen3-coder:free">qwen3-coder</option>
+              </optgroup>
+              <optgroup label="Google (free)">
+                <option value="google/gemma-3-12b-it:free">gemma-3-12b</option>
+                <option value="google/gemma-3-27b-it:free">gemma-3-27b</option>
+              </optgroup>
+              <optgroup label="Nvidia (free)">
+                <option value="nvidia/nemotron-nano-12b-v2:free">nemotron-12b</option>
+                <option value="nvidia/nemotron-3-nano-30b-a3b:free">nemotron-30b</option>
+              </optgroup>
+              <option value="custom">Custom...</option>
+            </select>
+            <input id="openrouterCustomModelInput" type="text" placeholder="Enter custom OpenRouter model ID" style="display: none; margin-top: 8px;" />
+          </div>
         </div>
       </div>
 
       <div class="section" id="sectionOllama">
+        <p class="section-copy">Local inference on your own box.</p>
+
         <div class="row">
           <label for="ollamaUrl">Ollama URL</label>
           <input id="ollamaUrl" type="text" placeholder="http://localhost:11434" />
         </div>
-        <div class="row">
+        <div class="row" style="margin-bottom: 0;">
           <label for="ollamaModel">Model</label>
           <select id="ollamaModel"></select>
+        </div>
+      </div>
+
+      <div class="section" id="sectionFrontier">
+        <p class="section-copy">Premium quality. Costs real money per call.</p>
+
+        <div class="radio-row">
+          <span class="radio-label">Active Provider</span>
+          <label class="radio-option"><input type="radio" name="activeFrontierProvider" value="anthropic" /> Anthropic</label>
+          <label class="radio-option"><input type="radio" name="activeFrontierProvider" value="openai" /> OpenAI</label>
+        </div>
+
+        <div class="provider-block">
+          <div class="provider-title">Anthropic</div>
+          <div class="row">
+            <label for="anthropicApiKey">Anthropic API Key</label>
+            <input id="anthropicApiKey" type="password" placeholder="sk-ant-..." />
+          </div>
+          <div class="row" style="margin-bottom: 0;">
+            <label for="anthropicModel">Anthropic Model</label>
+            <select id="anthropicModel">
+              <option value="claude-opus-4-7">claude-opus-4-7</option>
+              <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+              <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+              <option value="custom">Custom...</option>
+            </select>
+            <input id="anthropicCustomModelInput" type="text" placeholder="Enter custom Anthropic model ID (e.g. claude-opus-5)" style="display: none; margin-top: 8px;" />
+          </div>
+        </div>
+
+        <div class="provider-block" style="margin-bottom: 0;">
+          <div class="provider-title">OpenAI</div>
+          <div class="row">
+            <label for="openaiApiKey">OpenAI API Key</label>
+            <input id="openaiApiKey" type="password" placeholder="sk-..." />
+          </div>
+          <div class="row" style="margin-bottom: 0;">
+            <label for="openaiModel">OpenAI Model</label>
+            <select id="openaiModel">
+              <option value="gpt-5.4">gpt-5.4</option>
+              <option value="gpt-5.4-mini">gpt-5.4-mini</option>
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="custom">Custom...</option>
+            </select>
+            <input id="openaiCustomModelInput" type="text" placeholder="Enter custom OpenAI model ID (e.g. gpt-6)" style="display: none; margin-top: 8px;" />
+          </div>
         </div>
       </div>
 
@@ -163,18 +262,30 @@
     </div>
 
     <script>
-      let currentMode = 'groq';
-      const modeIds = { groq: 'Groq', gemini: 'Gemini', openrouter: 'OpenRouter', ollama: 'Ollama' };
-      const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
-      const groqModelSelect = document.getElementById('groqModel');
-      const groqApiKeyInput = document.getElementById('groqApiKey');
+      let currentTab = 'openllms';
       let latestSettings = null;
 
-      function setMode(mode) {
-        currentMode = mode;
-        Object.entries(modeIds).forEach(([m, id]) => {
-          document.getElementById('section' + id).className = 'section' + (mode === m ? ' visible' : '');
-          document.getElementById('btn' + id).className = 'toggle-btn' + (mode === m ? ' active' : '');
+      const tabIds = { openllms: 'OpenLLMs', ollama: 'Ollama', frontier: 'Frontier' };
+      const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+      const DEFAULT_OLLAMA_MODEL = 'qwen3.5:4b';
+      const DEFAULT_OPENROUTER_MODEL = 'qwen/qwen3-4b:free';
+      const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-4-7';
+      const DEFAULT_OPENAI_MODEL = 'gpt-5.4';
+
+      const groqModelSelect = document.getElementById('groqModel');
+      const groqApiKeyInput = document.getElementById('groqApiKey');
+      const modelFieldConfigs = [
+        { selectId: 'groqModel', inputId: 'groqCustomModelInput', defaultValue: DEFAULT_GROQ_MODEL, customKey: 'groqCustomModel' },
+        { selectId: 'openrouterModel', inputId: 'openrouterCustomModelInput', defaultValue: DEFAULT_OPENROUTER_MODEL, customKey: 'openrouterCustomModel' },
+        { selectId: 'anthropicModel', inputId: 'anthropicCustomModelInput', defaultValue: DEFAULT_ANTHROPIC_MODEL, customKey: 'anthropicCustomModel' },
+        { selectId: 'openaiModel', inputId: 'openaiCustomModelInput', defaultValue: DEFAULT_OPENAI_MODEL, customKey: 'openaiCustomModel' }
+      ];
+
+      function setTab(tab) {
+        currentTab = tab;
+        Object.entries(tabIds).forEach(([key, suffix]) => {
+          document.getElementById('section' + suffix).className = 'section' + (key === tab ? ' visible' : '');
+          document.getElementById('btn' + suffix).className = 'toggle-btn' + (key === tab ? ' active' : '');
         });
       }
 
@@ -200,6 +311,62 @@
         });
       }
 
+      function appendCustomOption(selectEl) {
+        if ([...selectEl.options].some((opt) => opt.value === 'custom')) return;
+        const opt = document.createElement('option');
+        opt.value = 'custom';
+        opt.textContent = 'Custom...';
+        selectEl.appendChild(opt);
+      }
+
+      function setRadioValue(name, value) {
+        const input = document.querySelector(`input[name="${name}"][value="${value}"]`);
+        if (input) input.checked = true;
+      }
+
+      function getRadioValue(name, fallback) {
+        return document.querySelector(`input[name="${name}"]:checked`)?.value || fallback;
+      }
+
+      function ensureSelectValue(id, value) {
+        const el = document.getElementById(id);
+        let found = false;
+        for (const opt of el.options) {
+          if (opt.value === value) {
+            opt.selected = true;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = value;
+          opt.selected = true;
+          el.appendChild(opt);
+        }
+      }
+
+      function syncCustomModelVisibility(selectEl, customInputEl) {
+        customInputEl.style.display = selectEl.value === 'custom' ? 'block' : 'none';
+      }
+
+      function wireCustomModelToggle(selectEl, customInputEl) {
+        selectEl.addEventListener('change', () => syncCustomModelVisibility(selectEl, customInputEl));
+      }
+
+      function getTabFromMode(mode) {
+        if (mode === 'ollama') return 'ollama';
+        if (mode === 'anthropic' || mode === 'openai') return 'frontier';
+        return 'openllms';
+      }
+
+      function resolveMode() {
+        if (currentTab === 'ollama') return 'ollama';
+        if (currentTab === 'frontier') return getRadioValue('activeFrontierProvider', 'anthropic');
+        return getRadioValue('activeOpenLLMProvider', 'groq');
+      }
+
       async function refreshGroqModels(selectedValue = '') {
         const models = await window.desk.getGroqModels();
         const nextValue = selectedValue || groqModelSelect.value || DEFAULT_GROQ_MODEL;
@@ -209,19 +376,30 @@
           nextValue,
           (value) => value === DEFAULT_GROQ_MODEL ? `${value} (default)` : value
         );
+        appendCustomOption(groqModelSelect);
+        if (nextValue === 'custom') groqModelSelect.value = 'custom';
+        syncCustomModelVisibility(groqModelSelect, document.getElementById('groqCustomModelInput'));
       }
 
       function collectDraftSettings() {
         return {
-          mode: currentMode,
+          mode: resolveMode(),
           groqApiKey: groqApiKeyInput.value.trim(),
           groqModel: groqModelSelect.value || DEFAULT_GROQ_MODEL,
-          geminiApiKey: document.getElementById('geminiApiKey').value.trim(),
-          geminiModel: document.getElementById('geminiModel').value || 'gemini-2.0-flash',
+          groqCustomModel: document.getElementById('groqCustomModelInput').value.trim(),
           openrouterApiKey: document.getElementById('openrouterApiKey').value.trim(),
-          openrouterModel: document.getElementById('openrouterModel').value || 'qwen/qwen3-4b:free',
+          openrouterModel: document.getElementById('openrouterModel').value || DEFAULT_OPENROUTER_MODEL,
+          openrouterCustomModel: document.getElementById('openrouterCustomModelInput').value.trim(),
+          anthropicApiKey: document.getElementById('anthropicApiKey').value.trim(),
+          anthropicModel: document.getElementById('anthropicModel').value || DEFAULT_ANTHROPIC_MODEL,
+          anthropicCustomModel: document.getElementById('anthropicCustomModelInput').value.trim(),
+          openaiApiKey: document.getElementById('openaiApiKey').value.trim(),
+          openaiModel: document.getElementById('openaiModel').value || DEFAULT_OPENAI_MODEL,
+          openaiCustomModel: document.getElementById('openaiCustomModelInput').value.trim(),
+          activeOpenLLMProvider: getRadioValue('activeOpenLLMProvider', 'groq'),
+          activeFrontierProvider: getRadioValue('activeFrontierProvider', 'anthropic'),
           ollamaUrl: document.getElementById('ollamaUrl').value.trim() || 'http://localhost:11434',
-          ollamaModel: document.getElementById('ollamaModel').value || 'qwen3.5:4b',
+          ollamaModel: document.getElementById('ollamaModel').value || DEFAULT_OLLAMA_MODEL,
           tavilyApiKey: document.getElementById('tavilyApiKey').value.trim()
         };
       }
@@ -229,44 +407,39 @@
       async function init() {
         const [settings, ollamaModels] = await Promise.all([window.desk.getSettings(), window.desk.getOllamaModels()]);
         latestSettings = settings;
-        setMode(settings.mode || 'groq');
+
         groqApiKeyInput.value = settings.groqApiKey || '';
-        document.getElementById('geminiApiKey').value = settings.geminiApiKey || '';
         document.getElementById('openrouterApiKey').value = settings.openrouterApiKey || '';
+        document.getElementById('anthropicApiKey').value = settings.anthropicApiKey || '';
+        document.getElementById('openaiApiKey').value = settings.openaiApiKey || '';
         document.getElementById('tavilyApiKey').value = settings.tavilyApiKey || '';
         document.getElementById('ollamaUrl').value = settings.ollamaUrl || 'http://localhost:11434';
+        document.getElementById('groqCustomModelInput').value = settings.groqCustomModel || '';
+        document.getElementById('openrouterCustomModelInput').value = settings.openrouterCustomModel || '';
+        document.getElementById('anthropicCustomModelInput').value = settings.anthropicCustomModel || '';
+        document.getElementById('openaiCustomModelInput').value = settings.openaiCustomModel || '';
 
-        const selects = [
-          ['geminiModel', settings.geminiModel || 'gemini-2.0-flash'],
-          ['openrouterModel', settings.openrouterModel || 'qwen/qwen3-4b:free']
-        ];
-        for (const [id, value] of selects) {
-          const el = document.getElementById(id);
-          let found = false;
-          for (const opt of el.options) {
-            if (opt.value === value) { opt.selected = true; found = true; break; }
-          }
-          if (!found) {
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = value;
-            opt.selected = true;
-            el.appendChild(opt);
-          }
-        }
+        setRadioValue('activeOpenLLMProvider', settings.activeOpenLLMProvider || (settings.mode === 'openrouter' ? 'openrouter' : 'groq'));
+        setRadioValue('activeFrontierProvider', settings.activeFrontierProvider || (settings.mode === 'openai' ? 'openai' : 'anthropic'));
+
+        appendCustomOption(document.getElementById('openrouterModel'));
+        appendCustomOption(document.getElementById('anthropicModel'));
+        appendCustomOption(document.getElementById('openaiModel'));
+        ensureSelectValue('openrouterModel', settings.openrouterModel || DEFAULT_OPENROUTER_MODEL);
+        ensureSelectValue('anthropicModel', settings.anthropicModel || DEFAULT_ANTHROPIC_MODEL);
+        ensureSelectValue('openaiModel', settings.openaiModel || DEFAULT_OPENAI_MODEL);
 
         await refreshGroqModels(settings.groqModel || DEFAULT_GROQ_MODEL);
 
-        const ollamaSelect = document.getElementById('ollamaModel');
-        const saved = settings.ollamaModel || 'qwen3.5:4b';
-        const list = ollamaModels.length ? ollamaModels : [saved];
-        list.forEach((m) => {
-          const opt = document.createElement('option');
-          opt.value = m;
-          opt.textContent = m;
-          if (m === saved) opt.selected = true;
-          ollamaSelect.appendChild(opt);
+        modelFieldConfigs.forEach(({ selectId, inputId }) => {
+          syncCustomModelVisibility(document.getElementById(selectId), document.getElementById(inputId));
         });
+
+        const ollamaSelect = document.getElementById('ollamaModel');
+        const savedOllamaModel = settings.ollamaModel || DEFAULT_OLLAMA_MODEL;
+        populateSelect(ollamaSelect, ollamaModels.length ? ollamaModels : [savedOllamaModel], savedOllamaModel);
+
+        setTab(getTabFromMode(settings.mode || 'groq'));
       }
 
       groqApiKeyInput.addEventListener('change', async () => {
@@ -285,6 +458,10 @@
         const status = document.getElementById('status');
         status.textContent = 'Saved';
         setTimeout(() => { status.textContent = ''; }, 1800);
+      });
+
+      modelFieldConfigs.forEach(({ selectId, inputId }) => {
+        wireCustomModelToggle(document.getElementById(selectId), document.getElementById(inputId));
       });
 
       init();
