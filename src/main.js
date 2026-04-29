@@ -57,6 +57,7 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENROUTER_MAX_TOKENS = 4096;
 const GROQ_MODEL_FALLBACKS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
 
 const MASTER_RESPONSE_SCAFFOLD = `GLOBAL RESPONSE RULES:
@@ -873,6 +874,7 @@ async function callOpenAI(systemPrompt, messages, model, apiKey, stream = false,
 async function pipeGroqStreamWithTools(payload, apiKey, tavilyApiKey, sender, endpoint = GROQ_URL, extraHeaders = {}) {
   const toolsDef = makeToolDef(tavilyApiKey);
   const requestBody = { ...payload, stream: true };
+  if (endpoint === OPENROUTER_URL) requestBody.max_tokens = OPENROUTER_MAX_TOKENS;
   if (toolsDef) {
     requestBody.tools = toolsDef;
     requestBody.tool_choice = 'auto';
@@ -974,6 +976,7 @@ async function pipeGroqStreamWithTools(payload, apiKey, tavilyApiKey, sender, en
 async function pipeGroqStreamTagged(payload, apiKey, tavilyApiKey, sender, endpoint = GROQ_URL, meta = {}, extraHeaders = {}) {
   const toolsDef = makeToolDef(tavilyApiKey);
   const requestBody = { ...payload, stream: true };
+  if (endpoint === OPENROUTER_URL) requestBody.max_tokens = OPENROUTER_MAX_TOKENS;
   if (toolsDef) {
     requestBody.tools = toolsDef;
     requestBody.tool_choice = 'auto';
@@ -1085,6 +1088,7 @@ async function completeChat(messages, settings) {
   }
 
   const payload = { model: provider.model, messages, stream: false };
+  if (provider.mode === 'openrouter') payload.max_tokens = OPENROUTER_MAX_TOKENS;
   const tools = makeToolDef(settings.tavilyApiKey);
   if (tools) {
     payload.tools = tools;
