@@ -17,6 +17,9 @@ const store = new Store({
       groqCustomModel: '',
       geminiApiKey: '',
       geminiModel: 'gemini-2.0-flash',
+      xiaomiApiKey: '',
+      xiaomiModel: 'mimo-v2.5-pro',
+      xiaomiCustomModel: '',
       openrouterApiKey: '',
       openrouterModel: 'qwen/qwen3-4b:free',
       openrouterCustomModel: '',
@@ -57,7 +60,9 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const XIAOMI_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 const OPENROUTER_MAX_TOKENS = 4096;
+const XIAOMI_MAX_TOKENS = 4096;
 const GROQ_MODEL_FALLBACKS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
 
 const MASTER_RESPONSE_SCAFFOLD = `GLOBAL RESPONSE RULES:
@@ -305,7 +310,7 @@ function buildModelStateContext(agentId = '') {
 
 function buildSystemPrompt(agent, documents = [], docTotalCharBudget = NORMAL_DOC_TOTAL_CHARS, model = '', mode = '', newsItems = [], _priceData = {}, isWarRoom = false, extraContext = '') {
   const scaffold = getScaffold(agent.type, agent.id);
-  const viaMap = { ollama: 'via Ollama on the user\'s local machine', groq: 'via Groq', openrouter: 'via OpenRouter', gemini: 'via Google Gemini' };
+  const viaMap = { ollama: 'via Ollama on the user\'s local machine', groq: 'via Groq', xiaomi: 'via Xiaomi MiMo', openrouter: 'via OpenRouter', gemini: 'via Google Gemini' };
   const modelNote = model ? `\n\nYou are running as ${model} ${viaMap[mode] || ''}.` : '';
   const timeNote = buildCurrentTimeNote();
   const warRoomNote = isWarRoom
@@ -605,6 +610,15 @@ function getProviderConfig(settings) {
     };
   }
   if (mode === 'gemini') return { mode, endpoint: GEMINI_URL, apiKey: settings.geminiApiKey, model: settings.geminiModel, extraHeaders: {} };
+  if (mode === 'xiaomi') {
+    return {
+      mode,
+      endpoint: XIAOMI_URL,
+      apiKey: settings.xiaomiApiKey,
+      model: resolveConfiguredModel(settings, 'xiaomiModel', 'xiaomiCustomModel', 'mimo-v2.5-pro'),
+      extraHeaders: {}
+    };
+  }
   if (mode === 'anthropic') {
     return {
       mode,
@@ -863,6 +877,32 @@ async function callOpenAI(systemPrompt, messages, model, apiKey, stream = false,
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(getReadableApiError(data, `OpenAI request failed (${response.status}).`));
+  }
+
+  if (stream) return pipeSSEStream(response.body, sender, events, meta);
+
+  const data = await response.json();
+  return normalizeMessageContent(data?.choices?.[0]?.message?.content);
+}
+
+async function callXiaomi(systemPrompt, messages, model, apiKey, stream = false, sender = null, events = { chunk: 'agent:stream-chunk', done: 'agent:stream-done', error: 'agent:stream-error' }, meta = {}) {
+  const response = await fetch(XIAOMI_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      messages: getOpenAIMessages(systemPrompt, messages),
+      stream
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Xiaomi API error ${response.status}: ${errorText}`);
   }
 
   if (stream) return pipeSSEStream(response.body, sender, events, meta);
@@ -1270,6 +1310,8 @@ ipcMain.handle('agent:send-message', async (_, { agentId, messages = [], newsIte
     let responseText = '';
     if (provider.mode === 'anthropic') {
       responseText = await callAnthropic(primary.systemPrompt, primary.chatMessages, provider.model, provider.apiKey, false);
+    } else if (provider.mode === 'xiaomi') {
+      responseText = await callXiaomi(primary.systemPrompt, primary.chatMessages, provider.model, provider.apiKey, false);
     } else if (provider.mode === 'openai') {
       responseText = await callOpenAI(primary.systemPrompt, primary.chatMessages, provider.model, provider.apiKey, false);
     } else {
@@ -1305,6 +1347,11 @@ ipcMain.on('agent:start-stream', async (event, { agentId, messages = [], newsIte
 
     if (provider.mode === 'anthropic') {
       await callAnthropic(promptBundle.systemPrompt, promptBundle.chatMessages, provider.model, provider.apiKey, true, sender);
+      return;
+    }
+
+    if (provider.mode === 'xiaomi') {
+      await callXiaomi(promptBundle.systemPrompt, promptBundle.chatMessages, provider.model, provider.apiKey, true, sender);
       return;
     }
 
@@ -1370,6 +1417,9 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
       } else if (provider.mode === 'anthropic') {
         const result = await callAnthropic(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
+      } else if (provider.mode === 'xiaomi') {
+        const result = await callXiaomi(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
       } else if (provider.mode === 'openai') {
         const result = await callOpenAI(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
@@ -1412,6 +1462,8 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
         await pipeOllamaStream(response.body, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else if (provider.mode === 'anthropic') {
         await callAnthropic(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+      } else if (provider.mode === 'xiaomi') {
+        await callXiaomi(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else if (provider.mode === 'openai') {
         await callOpenAI(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else {

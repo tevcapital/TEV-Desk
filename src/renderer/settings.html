@@ -144,6 +144,7 @@
         <div class="radio-row">
           <span class="radio-label">Active Provider</span>
           <label class="radio-option"><input type="radio" name="activeOpenLLMProvider" value="groq" /> Groq</label>
+          <label class="radio-option"><input type="radio" name="activeOpenLLMProvider" value="xiaomi" /> Xiaomi MiMo</label>
           <label class="radio-option"><input type="radio" name="activeOpenLLMProvider" value="openrouter" /> OpenRouter</label>
         </div>
 
@@ -157,6 +158,26 @@
             <label for="groqModel">Groq Model</label>
             <select id="groqModel"></select>
             <input id="groqCustomModelInput" type="text" placeholder="Enter custom Groq model ID" style="display: none; margin-top: 8px;" />
+          </div>
+        </div>
+
+        <div class="provider-block">
+          <div class="provider-title">Xiaomi MiMo</div>
+          <div class="row">
+            <label for="xiaomiApiKey">Xiaomi API Key</label>
+            <input id="xiaomiApiKey" type="password" placeholder="mimo_..." />
+          </div>
+          <div class="row" style="margin-bottom: 0;">
+            <label for="xiaomiModel">Xiaomi Model</label>
+            <select id="xiaomiModel">
+              <option value="mimo-v2.5-pro">MiMo V2.5 Pro (flagship, 1M context)</option>
+              <option value="mimo-v2.5">MiMo V2.5</option>
+              <option value="mimo-v2-pro">MiMo V2 Pro (1M context)</option>
+              <option value="mimo-v2-omni">MiMo V2 Omni (multimodal)</option>
+              <option value="mimo-v2-flash">MiMo V2 Flash (cheap/fast, 262k context)</option>
+              <option value="custom">Custom...</option>
+            </select>
+            <input id="xiaomiCustomModelInput" type="text" placeholder="Enter custom Xiaomi model ID" style="display: none; margin-top: 8px;" />
           </div>
         </div>
 
@@ -268,6 +289,7 @@
       const tabIds = { openllms: 'OpenLLMs', ollama: 'Ollama', frontier: 'Frontier' };
       const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
       const DEFAULT_OLLAMA_MODEL = 'qwen3.5:4b';
+      const DEFAULT_XIAOMI_MODEL = 'mimo-v2.5-pro';
       const DEFAULT_OPENROUTER_MODEL = 'qwen/qwen3-4b:free';
       const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-4-7';
       const DEFAULT_OPENAI_MODEL = 'gpt-5.4';
@@ -276,6 +298,7 @@
       const groqApiKeyInput = document.getElementById('groqApiKey');
       const modelFieldConfigs = [
         { selectId: 'groqModel', inputId: 'groqCustomModelInput', defaultValue: DEFAULT_GROQ_MODEL, customKey: 'groqCustomModel' },
+        { selectId: 'xiaomiModel', inputId: 'xiaomiCustomModelInput', defaultValue: DEFAULT_XIAOMI_MODEL, customKey: 'xiaomiCustomModel' },
         { selectId: 'openrouterModel', inputId: 'openrouterCustomModelInput', defaultValue: DEFAULT_OPENROUTER_MODEL, customKey: 'openrouterCustomModel' },
         { selectId: 'anthropicModel', inputId: 'anthropicCustomModelInput', defaultValue: DEFAULT_ANTHROPIC_MODEL, customKey: 'anthropicCustomModel' },
         { selectId: 'openaiModel', inputId: 'openaiCustomModelInput', defaultValue: DEFAULT_OPENAI_MODEL, customKey: 'openaiCustomModel' }
@@ -387,6 +410,9 @@
           groqApiKey: groqApiKeyInput.value.trim(),
           groqModel: groqModelSelect.value || DEFAULT_GROQ_MODEL,
           groqCustomModel: document.getElementById('groqCustomModelInput').value.trim(),
+          xiaomiApiKey: document.getElementById('xiaomiApiKey').value.trim(),
+          xiaomiModel: document.getElementById('xiaomiModel').value || DEFAULT_XIAOMI_MODEL,
+          xiaomiCustomModel: document.getElementById('xiaomiCustomModelInput').value.trim(),
           openrouterApiKey: document.getElementById('openrouterApiKey').value.trim(),
           openrouterModel: document.getElementById('openrouterModel').value || DEFAULT_OPENROUTER_MODEL,
           openrouterCustomModel: document.getElementById('openrouterCustomModelInput').value.trim(),
@@ -409,22 +435,26 @@
         latestSettings = settings;
 
         groqApiKeyInput.value = settings.groqApiKey || '';
+        document.getElementById('xiaomiApiKey').value = settings.xiaomiApiKey || '';
         document.getElementById('openrouterApiKey').value = settings.openrouterApiKey || '';
         document.getElementById('anthropicApiKey').value = settings.anthropicApiKey || '';
         document.getElementById('openaiApiKey').value = settings.openaiApiKey || '';
         document.getElementById('tavilyApiKey').value = settings.tavilyApiKey || '';
         document.getElementById('ollamaUrl').value = settings.ollamaUrl || 'http://localhost:11434';
         document.getElementById('groqCustomModelInput').value = settings.groqCustomModel || '';
+        document.getElementById('xiaomiCustomModelInput').value = settings.xiaomiCustomModel || '';
         document.getElementById('openrouterCustomModelInput').value = settings.openrouterCustomModel || '';
         document.getElementById('anthropicCustomModelInput').value = settings.anthropicCustomModel || '';
         document.getElementById('openaiCustomModelInput').value = settings.openaiCustomModel || '';
 
-        setRadioValue('activeOpenLLMProvider', settings.activeOpenLLMProvider || (settings.mode === 'openrouter' ? 'openrouter' : 'groq'));
+        setRadioValue('activeOpenLLMProvider', settings.activeOpenLLMProvider || (settings.mode === 'openrouter' ? 'openrouter' : (settings.mode === 'xiaomi' ? 'xiaomi' : 'groq')));
         setRadioValue('activeFrontierProvider', settings.activeFrontierProvider || (settings.mode === 'openai' ? 'openai' : 'anthropic'));
 
+        appendCustomOption(document.getElementById('xiaomiModel'));
         appendCustomOption(document.getElementById('openrouterModel'));
         appendCustomOption(document.getElementById('anthropicModel'));
         appendCustomOption(document.getElementById('openaiModel'));
+        ensureSelectValue('xiaomiModel', settings.xiaomiModel || DEFAULT_XIAOMI_MODEL);
         ensureSelectValue('openrouterModel', settings.openrouterModel || DEFAULT_OPENROUTER_MODEL);
         ensureSelectValue('anthropicModel', settings.anthropicModel || DEFAULT_ANTHROPIC_MODEL);
         ensureSelectValue('openaiModel', settings.openaiModel || DEFAULT_OPENAI_MODEL);
