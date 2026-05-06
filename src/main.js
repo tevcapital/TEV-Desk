@@ -47,7 +47,7 @@ const VERIFY_QUERY_RE = /\b(check|verify|look\s*up|lookup|search|google|internet
 const FRESH_EVENT_QUERY_RE = /\b(just|just\s+now|right\s+now|today|this\s+morning|this\s+afternoon|breaking|announced|announcement|conference|event|launch(?:ed)?|unveil(?:ed)?|earnings|call|guidance|keynote)\b/i;
 const MODEL_CHANGE_QUERY_RE = /\b(change\s+your\s+model|update\s+(?:your\s+)?model|what\s+does\s+this\s+change|how\s+does\s+this\s+change|revise\s+(?:your\s+)?model|base\s+case|bull\s+case|bear\s+case|targets?)\b/i;
 
-const MAX_DOC_CHARS = 40000;
+const MAX_DOCUMENT_CHARS = 80000;
 const NORMAL_DOC_TOTAL_CHARS = 12000;
 const RETRY_DOC_TOTAL_CHARS = 5000;
 const NORMAL_CHAT_CHARS = 8000;
@@ -354,6 +354,35 @@ function clipMessagesForBudget(messages = [], charBudget = NORMAL_CHAT_CHARS) {
   return kept.reverse();
 }
 
+function clipMessagesPreservingDocs(messages = [], charBudget = NORMAL_CHAT_CHARS) {
+  const docBearing = [];
+  const regular = [];
+  for (const message of messages) {
+    const content = String(message.content || '');
+    if (content.includes('[Uploaded document:')) docBearing.push({ role: message.role, content });
+    else regular.push({ role: message.role, content });
+  }
+
+  const clippedRegular = clipMessagesForBudget(regular, charBudget);
+  const result = [];
+  let regularIndex = 0;
+  let docIndex = 0;
+  for (const message of messages) {
+    const content = String(message.content || '');
+    if (content.includes('[Uploaded document:')) {
+      result.push(docBearing[docIndex]);
+      docIndex += 1;
+      continue;
+    }
+    const nextRegular = clippedRegular[regularIndex];
+    if (nextRegular && nextRegular.role === message.role && nextRegular.content === content) {
+      result.push(nextRegular);
+      regularIndex += 1;
+    }
+  }
+  return result;
+}
+
 async function extractDocumentText(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === '.txt' || ext === '.csv') return fs.readFileSync(filePath, 'utf8');
@@ -361,15 +390,72 @@ async function extractDocumentText(filePath) {
     const pdfParseModule = require('pdf-parse');
     const pdfParse = pdfParseModule.default || pdfParseModule;
     const parsed = await pdfParse(fs.readFileSync(filePath));
-    return parsed.text || '';
+    const text = String(parsed.text || '').trim();
+    if (!text) throw new Error('content could not be extracted. Likely cause: image-based PDF or corrupt file.');
+    return text;
   }
   if (ext === '.docx') {
     const mammothModule = require('mammoth');
     const mammoth = mammothModule.default || mammothModule;
     const result = await mammoth.extractRawText({ path: filePath });
-    return result.value || '';
+    const text = String(result.value || '').trim();
+    if (!text) throw new Error('content could not be extracted. Likely cause: empty or unsupported DOCX.');
+    return text;
   }
   throw new Error(`Unsupported file type: ${ext}`);
+}
+
+// TEV Desk variant: document upload pipeline (docx/pdf/txt/csv extraction).
+// Backported from TEV Loop. The reference implementation lives in TEV Loop's
+// main.js (extractDocumentText, truncateDocumentText, buildDocumentFailureText,
+// formatUploadedDocumentsForMessage, injectDocumentsIntoMessages).
+//
+// This is a behavior port, not a sync. TEV Desk preserves its existing
+// agent shape, scaffolds, settings UI, and structural positioning. Only
+// the document pipeline is shared with TEV Loop.
+//
+// If TEV Loop's pipeline diverges further in the future, do NOT auto-sync.
+// Re-evaluate whether the change applies to TEV Desk on its own merits.
+function truncateDocumentText(text, name) {
+  const normalized = String(text || '');
+  if (normalized.length <= MAX_DOCUMENT_CHARS) return normalized;
+  console.warn(`[TEV Desk] Truncating uploaded document "${name}" from ${normalized.length} to ${MAX_DOCUMENT_CHARS} characters.`);
+  return [
+    `[Document truncated at ${MAX_DOCUMENT_CHARS} characters. Original document was ${normalized.length} characters. Truncated content follows:]`,
+    normalized.slice(0, MAX_DOCUMENT_CHARS),
+    '[End of truncated document]'
+  ].join('\n');
+}
+
+function buildDocumentFailureText(name, error) {
+  const reason = error instanceof Error && error.message ? error.message : 'content could not be extracted.';
+  return `[Document upload failed: ${name} — ${reason}]`;
+}
+
+function formatUploadedDocumentsForMessage(documents = []) {
+  const blocks = documents
+    .map((doc) => {
+      const text = String(doc?.text || '').trim();
+      if (!text) return '';
+      return [`[Uploaded document: ${doc.name}]`, text, '[End of document]'].join('\n');
+    })
+    .filter(Boolean);
+  return blocks.join('\n\n');
+}
+
+function injectDocumentsIntoMessages(messages = [], documents = []) {
+  if (!documents.length) return messages.map((message) => ({ ...message }));
+  const docContext = formatUploadedDocumentsForMessage(documents);
+  if (!docContext) return messages.map((message) => ({ ...message }));
+
+  const cloned = messages.map((message) => ({ ...message, content: String(message.content || '') }));
+  for (let index = cloned.length - 1; index >= 0; index -= 1) {
+    if (cloned[index].role !== 'user') continue;
+    cloned[index].content = [docContext, cloned[index].content].filter(Boolean).join('\n\n');
+    return cloned;
+  }
+
+  return [...cloned, { role: 'user', content: docContext }];
 }
 
 function getAgentWithState(agentId) {
@@ -1156,10 +1242,11 @@ async function completeChat(messages, settings) {
   return message?.content || '';
 }
 
-async function buildPromptMessages(agentId, messages = [], newsItems = [], isWarRoom = false, docBudget = NORMAL_DOC_TOTAL_CHARS, chatBudget = NORMAL_CHAT_CHARS, extraContext = '') {
+async function buildPromptMessages(agentId, messages = [], newsItems = [], isWarRoom = false, docBudget = NORMAL_DOC_TOTAL_CHARS, chatBudget = NORMAL_CHAT_CHARS, extraContext = '', documents = []) {
   const agent = getAgentWithState(agentId);
   if (!agent) throw new Error('Unknown agent.');
   const settings = store.get('settings', {});
+  const attachedDocuments = [...documents, ...(agent.documents || [])];
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
   const mode = classifyTurnMode(lastUserMessage, messages, agentId, newsItems);
   const reasoningBits = [buildSharedReasoningContract(mode)];
@@ -1169,12 +1256,14 @@ async function buildPromptMessages(agentId, messages = [], newsItems = [], isWar
   else reasoningBits.push(buildNoModelStateNote(agentId));
   if (DATE_TIME_QUERY_RE.test(lastUserMessage)) reasoningBits.push('If the user asks only for the date or time, answer directly using the current time note above.');
   if (extraContext) reasoningBits.push(extraContext);
+  const injectedMessages = injectDocumentsIntoMessages(messages, attachedDocuments);
+  const clippedMessages = clipMessagesPreservingDocs(injectedMessages, chatBudget);
 
   return {
     settings,
     agent,
-    systemPrompt: buildSystemPrompt(agent, agent.documents || [], docBudget, getProviderConfig(settings).model, settings.mode, newsItems, {}, isWarRoom, reasoningBits.join('\n\n')),
-    chatMessages: clipMessagesForBudget(messages, chatBudget)
+    systemPrompt: buildSystemPrompt(agent, [], docBudget, getProviderConfig(settings).model, settings.mode, newsItems, {}, isWarRoom, reasoningBits.join('\n\n')),
+    chatMessages: clippedMessages
   };
 }
 
@@ -1218,9 +1307,16 @@ ipcMain.handle('agent:clear-model', (_, agentId) => {
 async function importDocuments(filePaths) {
   const docs = [];
   for (const filePath of filePaths) {
-    const text = String(await extractDocumentText(filePath)).slice(0, MAX_DOC_CHARS);
+    const name = path.basename(filePath);
+    let text = '';
+    try {
+      text = truncateDocumentText(await extractDocumentText(filePath), name);
+    } catch (error) {
+      console.error(`[TEV Desk] Document extraction failed for "${name}":`, error);
+      text = buildDocumentFailureText(name, error);
+    }
     docs.push({
-      name: path.basename(filePath),
+      name,
       path: filePath,
       text,
       uploadedAt: new Date().toISOString()
@@ -1305,7 +1401,8 @@ ipcMain.handle('ollama:get-models', async () => {
 
 ipcMain.handle('agent:send-message', async (_, { agentId, messages = [], newsItems = [] }) => {
   try {
-    const primary = await buildPromptMessages(agentId, messages, newsItems, false, NORMAL_DOC_TOTAL_CHARS, NORMAL_CHAT_CHARS);
+    // Document upload injection — backported from TEV Loop. See main.js extraction utility.
+    const primary = await buildPromptMessages(agentId, messages, newsItems, false, NORMAL_DOC_TOTAL_CHARS, NORMAL_CHAT_CHARS, '', []);
     const provider = getProviderConfig(primary.settings);
     let responseText = '';
     if (provider.mode === 'anthropic') {
@@ -1326,7 +1423,9 @@ ipcMain.handle('agent:send-message', async (_, { agentId, messages = [], newsIte
 ipcMain.on('agent:start-stream', async (event, { agentId, messages = [], newsItems = [], isWarRoom = false }) => {
   const sender = event.sender;
   try {
-    let promptBundle = await buildPromptMessages(agentId, messages, newsItems, isWarRoom);
+    const warRoomDocs = isWarRoom ? store.get('warroom.documents', []) : [];
+    // Document upload injection — backported from TEV Loop. See main.js extraction utility.
+    let promptBundle = await buildPromptMessages(agentId, messages, newsItems, isWarRoom, NORMAL_DOC_TOTAL_CHARS, NORMAL_CHAT_CHARS, '', warRoomDocs);
     const settings = promptBundle.settings;
     const provider = getProviderConfig(settings);
 
@@ -1365,7 +1464,7 @@ ipcMain.on('agent:start-stream', async (event, { agentId, messages = [], newsIte
     if (result.ok) return;
 
     if (result.tooLarge) {
-      promptBundle = await buildPromptMessages(agentId, messages, newsItems, isWarRoom, RETRY_DOC_TOTAL_CHARS, RETRY_CHAT_CHARS);
+      promptBundle = await buildPromptMessages(agentId, messages, newsItems, isWarRoom, RETRY_DOC_TOTAL_CHARS, RETRY_CHAT_CHARS, '', warRoomDocs);
       const retryPayload = { model: provider.model, messages: [{ role: 'system', content: promptBundle.systemPrompt }, ...promptBundle.chatMessages] };
       const retry = await pipeGroqStreamWithTools(retryPayload, provider.apiKey, settings.tavilyApiKey, sender, provider.endpoint, provider.extraHeaders);
       if (retry.ok) return;
@@ -1398,13 +1497,16 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
       const newsItems = await fetchNewsForAgent(agentId);
       const transcript = researchOutputs.map((item) => `[${item.agentId}]: ${item.text}`).join('\n');
       const lastMsgs = buildAskAllMessages(question, transcript);
+      const documentInjectedMsgs = injectDocumentsIntoMessages(lastMsgs, [...warRoomDocs, ...(agent.documents || [])]);
       const mode = classifyTurnMode(question, lastMsgs, agentId, newsItems);
       const context = [buildSharedReasoningContract(mode)];
       if (needsEventGroundingNote(question, lastMsgs, newsItems)) context.push(buildEventGroundingNote());
       const modelState = buildModelStateContext(agentId);
       context.push(modelState || buildNoModelStateNote(agentId));
-      const systemPrompt = buildSystemPrompt(agent, [...warRoomDocs, ...(agent.documents || [])], NORMAL_DOC_TOTAL_CHARS, provider.model, provider.mode, newsItems, {}, true, context.join('\n\n'));
-      const payload = { model: provider.model, messages: [{ role: 'system', content: systemPrompt }, ...clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS)] };
+      // Document upload injection — backported from TEV Loop. See main.js extraction utility.
+      const systemPrompt = buildSystemPrompt(agent, [], NORMAL_DOC_TOTAL_CHARS, provider.model, provider.mode, newsItems, {}, true, context.join('\n\n'));
+      const clippedAskAllMessages = clipMessagesPreservingDocs(documentInjectedMsgs, NORMAL_CHAT_CHARS);
+      const payload = { model: provider.model, messages: [{ role: 'system', content: systemPrompt }, ...clippedAskAllMessages] };
 
       if (provider.mode === 'ollama') {
         const response = await fetch(`${provider.endpoint.replace(/\/$/, '')}/api/chat`, {
@@ -1415,13 +1517,13 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
         const result = await pipeOllamaStream(response.body, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
       } else if (provider.mode === 'anthropic') {
-        const result = await callAnthropic(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        const result = await callAnthropic(systemPrompt, clippedAskAllMessages, provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
       } else if (provider.mode === 'xiaomi') {
-        const result = await callXiaomi(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        const result = await callXiaomi(systemPrompt, clippedAskAllMessages, provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
       } else if (provider.mode === 'openai') {
-        const result = await callOpenAI(systemPrompt, clipMessagesForBudget(lastMsgs, NORMAL_CHAT_CHARS), provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        const result = await callOpenAI(systemPrompt, clippedAskAllMessages, provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
         researchOutputs.push({ agentId, text: sanitizeVisibleAssistantText(result.text || '') });
       } else {
         const result = await pipeGroqStreamTagged(payload, provider.apiKey, settings.tavilyApiKey, sender, provider.endpoint, { agentId }, provider.extraHeaders);
@@ -1434,9 +1536,11 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
     const synthesisPrompt = researchOutputs.map((item) => `[${item.agentId}]: ${item.text}`).join('\n\n');
     for (const agentId of ['CHIEF', 'TENSION']) {
       const agent = getAgentWithState(agentId);
+      // Document upload injection — backported from TEV Loop. See main.js extraction utility.
+      const synthesisMessages = injectDocumentsIntoMessages([{ role: 'user', content: question }], warRoomDocs);
       const systemPrompt = buildSystemPrompt(
         agent,
-        warRoomDocs,
+        [],
         NORMAL_DOC_TOTAL_CHARS,
         provider.model,
         provider.mode,
@@ -1445,11 +1549,12 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
         true,
         `Research transcript:\n${synthesisPrompt}\n\nMake the call from your own role.`
       );
+      const clippedSynthesisMessages = clipMessagesPreservingDocs(synthesisMessages, NORMAL_CHAT_CHARS);
       const payload = {
         model: provider.model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: question }
+          ...clippedSynthesisMessages
         ]
       };
 
@@ -1461,11 +1566,11 @@ ipcMain.on('warroom:ask-all', async (event, { question }) => {
         });
         await pipeOllamaStream(response.body, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else if (provider.mode === 'anthropic') {
-        await callAnthropic(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        await callAnthropic(systemPrompt, clippedSynthesisMessages, provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else if (provider.mode === 'xiaomi') {
-        await callXiaomi(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        await callXiaomi(systemPrompt, clippedSynthesisMessages, provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else if (provider.mode === 'openai') {
-        await callOpenAI(systemPrompt, [{ role: 'user', content: question }], provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
+        await callOpenAI(systemPrompt, clippedSynthesisMessages, provider.model, provider.apiKey, true, sender, { chunk: 'askall:agent-chunk', done: 'askall:agent-done', error: 'askall:agent-error' }, { agentId });
       } else {
         await pipeGroqStreamTagged(payload, provider.apiKey, settings.tavilyApiKey, sender, provider.endpoint, { agentId }, provider.extraHeaders);
       }
