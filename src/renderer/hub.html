@@ -85,6 +85,22 @@
         letter-spacing: 0.01em;
         font-family: inherit;
       }
+      .decisions-btn {
+        display: block;
+        width: calc(100% - 20px);
+        margin: 12px 10px 4px;
+        border: 1px solid #d5c7a0;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #5b4a2f, #8b6a2f);
+        color: #fff;
+        padding: 11px 14px;
+        cursor: pointer;
+        text-align: left;
+        letter-spacing: 0.01em;
+        font-family: inherit;
+      }
+      .launcher-title { display: block; font-size: 13px; font-weight: 700; }
+      .launcher-subtitle { display: block; margin-top: 3px; font-size: 10px; opacity: 0.88; }
     </style>
   </head>
   <body>
@@ -92,7 +108,19 @@
       <h1>TEV Desk</h1>
       <p>8 agent launcher — AI Leaders Research Desk</p>
     </header>
-    <button class="war-room-btn" id="warRoomBtn">⬡ War Room — All Agents</button>
+    <!-- TEV Desk variant: in-app decisions repository.
+    This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+    BT8BTC, Artists, Construction Desk) do not have this feature and are not
+    scheduled to receive it. This is a commissioned product feature, not a sweep.
+    DO NOT propagate to other apps during future cross-app work. Re-evaluate per app. -->
+    <button class="decisions-btn" id="decisionsBtn">
+      <span class="launcher-title">Decisions</span>
+      <span class="launcher-subtitle">Repository</span>
+    </button>
+    <button class="war-room-btn" id="warRoomBtn">
+      <span class="launcher-title">⬡ War Room</span>
+      <span class="launcher-subtitle">All Agents</span>
+    </button>
     <div class="list" id="list"></div>
     <footer>
       <button class="btn" id="settingsBtn">Settings</button>
@@ -121,6 +149,7 @@
         list.innerHTML = renderGroup('Research', research) + renderGroup('Leadership', leadership);
         list.querySelectorAll('.card').forEach((btn) => btn.addEventListener('click', () => window.desk.openAgent(btn.dataset.id)));
         document.getElementById('settingsBtn').addEventListener('click', () => window.desk.openAgent('__settings__'));
+        document.getElementById('decisionsBtn').addEventListener('click', () => window.desk.openAgent('__decisions__'));
         document.getElementById('warRoomBtn').addEventListener('click', () => window.desk.openAgent('__warroom__'));
         document.getElementById('openAllBtn').addEventListener('click', async () => {
           for (const agent of agents) {

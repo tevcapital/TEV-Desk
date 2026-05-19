@@ -38,9 +38,20 @@ const store = new Store({
     agents: {},
     agentModels: {},
     bounds: {},
-    warroom: { messages: [], documents: [] }
+    warroom: { messages: [], documents: [] },
+    // TEV Desk variant: in-app decisions repository.
+    // This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+    // BT8BTC, Artists, Construction Desk) do not have this feature and are not
+    // scheduled to receive it. This is a commissioned product feature, not a sweep.
+    // DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+    decisions: []
   }
 });
+
+// TEV Desk variant: decisions repository migration. See divergence note.
+if (!Array.isArray(store.get('decisions'))) {
+  store.set('decisions', []);
+}
 
 const DATE_TIME_QUERY_RE = /\b(what(?:'s| is)?\s+(?:the\s+)?(?:date|day|time)(?:\s+(?:today|now))?|today'?s?\s+date|current\s+(?:date|day|time)|what\s+date\s+is\s+(?:it|today)|what\s+day\s+is\s+it|time\s+now|date\s+today)\b/i;
 const VERIFY_QUERY_RE = /\b(check|verify|look\s*up|lookup|search|google|internet|online|latest|current|today|recent)\b/i;
@@ -210,6 +221,58 @@ function stripTranscriptPrefix(text = '') {
 
 function sanitizeVisibleAssistantText(text = '') {
   return stripTranscriptPrefix(String(text));
+}
+
+function formatDecisionTranscript(transcript = []) {
+  return transcript
+    .map((entry) => `[${entry.agentId}]: ${String(entry.text || '').trim()}`)
+    .join('\n\n');
+}
+
+function getDecisionParticipants(transcript = []) {
+  const seen = new Set();
+  const participants = [];
+  for (const entry of transcript) {
+    const agentId = String(entry?.agentId || '').trim();
+    if (!agentId || seen.has(agentId)) continue;
+    seen.add(agentId);
+    participants.push(agentId);
+  }
+  return participants;
+}
+
+function parseDecisionJsonResponse(raw = '') {
+  const text = String(raw || '').trim();
+  if (!text) throw new Error('Empty JSON response.');
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced?.[1]) return JSON.parse(fenced[1].trim());
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
+    throw new Error('Invalid JSON response.');
+  }
+}
+
+// TEV Desk variant: in-app decisions repository.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+function buildDecisionSynthesisPrompt(userQuestion, transcriptText) {
+  const chiefScaffold = getScaffold('chief', 'CHIEF');
+  const system = chiefScaffold;
+  const user = [
+    `Original user question: ${String(userQuestion || '').trim()}`,
+    '',
+    'War Room transcript:',
+    transcriptText,
+    '',
+    'Synthesize a decision from this room. State the decision, the reasoning, and the key tensions. Write in your own voice. No preamble. No meta. Just the synthesis.'
+  ].join('\n');
+  return { system, user };
 }
 
 function getAgentState(agentId) {
@@ -571,6 +634,32 @@ function createWarRoomWindow() {
   });
   windows.set('warroom', win);
   win.on('closed', () => windows.delete('warroom'));
+}
+
+// TEV Desk variant: in-app decisions repository.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+function createDecisionsWindow() {
+  const existing = windows.get('decisions');
+  if (existing && !existing.isDestroyed()) return existing.focus();
+  const win = createWindow('decisions', {
+    width: 1400,
+    height: 900,
+    minWidth: 1100,
+    minHeight: 700,
+    title: 'TEV Desk - Decisions Repository',
+    backgroundColor: '#f4f7fb',
+    titleBarStyle: 'hiddenInset'
+  });
+  win.loadFile(path.join(__dirname, 'renderer', 'decisions.html'));
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  windows.set('decisions', win);
+  win.on('closed', () => windows.delete('decisions'));
 }
 
 function createAgentWindow(agentId) {
@@ -1242,6 +1331,20 @@ async function completeChat(messages, settings) {
   return message?.content || '';
 }
 
+async function completeProviderChat(systemPrompt, messages, settings) {
+  const provider = getProviderConfig(settings);
+  if (provider.mode === 'anthropic') {
+    return callAnthropic(systemPrompt, messages, provider.model, provider.apiKey, false);
+  }
+  if (provider.mode === 'xiaomi') {
+    return callXiaomi(systemPrompt, messages, provider.model, provider.apiKey, false);
+  }
+  if (provider.mode === 'openai') {
+    return callOpenAI(systemPrompt, messages, provider.model, provider.apiKey, false);
+  }
+  return completeChat([{ role: 'system', content: systemPrompt }, ...messages], settings);
+}
+
 async function buildPromptMessages(agentId, messages = [], newsItems = [], isWarRoom = false, docBudget = NORMAL_DOC_TOTAL_CHARS, chatBudget = NORMAL_CHAT_CHARS, extraContext = '', documents = []) {
   const agent = getAgentWithState(agentId);
   if (!agent) throw new Error('Unknown agent.');
@@ -1272,6 +1375,7 @@ ipcMain.handle('agent:get', (_, agentId) => getAgentWithState(agentId));
 ipcMain.handle('agent:open', (_, agentId) => {
   if (agentId === '__settings__') { createSettingsWindow(); return true; }
   if (agentId === '__warroom__') { createWarRoomWindow(); return true; }
+  if (agentId === '__decisions__') { createDecisionsWindow(); return true; }
   createAgentWindow(agentId);
   return true;
 });
@@ -1364,6 +1468,118 @@ ipcMain.handle('warroom:remove-document', (_, { docIndex }) => {
   docs.splice(docIndex, 1);
   store.set('warroom.documents', docs);
   return docs;
+});
+
+// TEV Desk variant: in-app decisions repository.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+ipcMain.handle('decisions:save-from-warroom', async (_, { userQuestion = '', transcript = [] } = {}) => {
+  const safeTranscript = Array.isArray(transcript)
+    ? transcript.filter((entry) => entry && typeof entry === 'object' && String(entry.agentId || '').trim() && String(entry.text || '').trim())
+    : [];
+  if (!safeTranscript.length) return { ok: false, error: 'Transcript is required', stage: 'input' };
+
+  const settings = store.get('settings', {});
+  const transcriptText = formatDecisionTranscript(safeTranscript);
+  const participants = getDecisionParticipants(safeTranscript);
+  let proseSynthesis = '';
+
+  try {
+    const { system, user } = buildDecisionSynthesisPrompt(userQuestion, transcriptText);
+    const rawResponse = await completeProviderChat(system, [
+      { role: 'user', content: user }
+    ], settings);
+    proseSynthesis = sanitizeVisibleAssistantText(rawResponse).trim();
+  } catch (_) {
+    return { ok: false, error: 'CHIEF synthesis failed', stage: 'prose' };
+  }
+
+  if (!proseSynthesis) return { ok: false, error: 'CHIEF synthesis failed', stage: 'prose' };
+
+  const jsonSystemPrompt = 'You are a structured-data extractor. Read the synthesis below and return ONLY a JSON object with these exact fields: topic (string, 5-10 words), theme (string, broad category), subject (string, specific subject), decisionText (string, the decision itself, can quote/paraphrase the synthesis), rationale (string, the key supporting arguments). Return ONLY the JSON. No markdown fences. No preamble. No commentary. JSON ONLY. JSON ONLY. JSON ONLY.';
+  const jsonMessages = [
+    { role: 'system', content: jsonSystemPrompt },
+    { role: 'user', content: proseSynthesis }
+  ];
+
+  let parsed;
+  try {
+    const jsonResponse = await completeProviderChat(jsonSystemPrompt, [{ role: 'user', content: proseSynthesis }], settings);
+    parsed = parseDecisionJsonResponse(jsonResponse);
+  } catch (_) {
+    try {
+      const retryResponse = await completeProviderChat(
+        `${jsonSystemPrompt} JSON ONLY — your previous response was not valid JSON. Return only the JSON object, nothing else.`,
+        [
+        { role: 'user', content: proseSynthesis }
+        ],
+        settings
+      );
+      parsed = parseDecisionJsonResponse(retryResponse);
+    } catch (_) {
+      return { ok: false, error: 'JSON structuring failed', stage: 'json', proseSynthesis };
+    }
+  }
+
+  const createdAt = Date.now();
+  const id = `dec_${createdAt}_${Math.random().toString(36).slice(2, 8)}`;
+  const record = {
+    id,
+    createdAt,
+    date: new Date(createdAt).toISOString().slice(0, 10),
+    topic: String(parsed?.topic || '').trim(),
+    theme: String(parsed?.theme || '').trim(),
+    subject: String(parsed?.subject || '').trim(),
+    participants,
+    decisionText: String(parsed?.decisionText || '').trim(),
+    rationale: String(parsed?.rationale || '').trim(),
+    transcriptExcerpt: transcriptText
+  };
+
+  const decisions = Array.isArray(store.get('decisions')) ? store.get('decisions') : [];
+  decisions.push(record);
+  store.set('decisions', decisions);
+  return { ok: true, id, record };
+});
+
+// TEV Desk variant: in-app decisions repository.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+ipcMain.handle('decisions:list', () => {
+  const decisions = Array.isArray(store.get('decisions')) ? store.get('decisions') : [];
+  return {
+    ok: true,
+    decisions: [...decisions].sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0))
+  };
+});
+
+// TEV Desk variant: in-app decisions repository.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+ipcMain.handle('decisions:get', (_, { id } = {}) => {
+  const decisions = Array.isArray(store.get('decisions')) ? store.get('decisions') : [];
+  const decision = decisions.find((item) => item?.id === id);
+  if (!decision) return { ok: false, error: 'not found' };
+  return { ok: true, decision };
+});
+
+// TEV Desk variant: in-app decisions repository.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+ipcMain.handle('decisions:delete', (_, { id } = {}) => {
+  const decisions = Array.isArray(store.get('decisions')) ? store.get('decisions') : [];
+  const next = decisions.filter((item) => item?.id !== id);
+  if (next.length === decisions.length) return { ok: false, error: 'not found' };
+  store.set('decisions', next);
+  return { ok: true };
 });
 
 ipcMain.handle('agent:fetch-news', async (_, agentId) => fetchNewsForAgent(agentId));

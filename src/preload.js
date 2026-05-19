@@ -48,6 +48,17 @@ contextBridge.exposeInMainWorld('desk', {
   saveMessages: (agentId, messages) => ipcRenderer.invoke('agent:save-messages', { agentId, messages }),
   clearMessages: (agentId) => ipcRenderer.invoke('agent:clear-messages', agentId),
   fetchNews: (agentId) => ipcRenderer.invoke('agent:fetch-news', agentId),
+  // TEV Desk variant: in-app decisions repository.
+  // This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+  // BT8BTC, Artists, Construction Desk) do not have this feature and are not
+  // scheduled to receive it. This is a commissioned product feature, not a sweep.
+  // DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+  decisions: {
+    save: (payload) => ipcRenderer.invoke('decisions:save-from-warroom', payload),
+    list: () => ipcRenderer.invoke('decisions:list'),
+    get: (id) => ipcRenderer.invoke('decisions:get', { id }),
+    delete: (id) => ipcRenderer.invoke('decisions:delete', { id })
+  },
   getSettings: () => ipcRenderer.invoke('settings:get'),
   getGroqModels: () => ipcRenderer.invoke('settings:get-groq-models'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),

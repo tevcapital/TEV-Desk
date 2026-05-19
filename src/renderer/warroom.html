@@ -217,6 +217,24 @@
         background: #fef3c7;
         color: #92400e;
       }
+      .save-status {
+        min-height: 18px;
+        font-size: 12px;
+        color: var(--muted);
+        padding: 0 2px;
+      }
+      .save-status.error { color: #991b1b; }
+      .save-status.success { color: #166534; }
+      .save-status button {
+        margin-left: 8px;
+        border: none;
+        background: transparent;
+        color: var(--accent);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 0;
+      }
     </style>
   </head>
   <body>
@@ -238,9 +256,15 @@
 
     <div class="input-wrap">
       <div class="speaking-to">Speaking to: <span class="speaking-badge" id="speakingBadge">—</span></div>
+      <div class="save-status" id="saveStatus"></div>
       <div class="input-row">
         <textarea id="input" placeholder="Address the selected agent..."></textarea>
-        <button class="ask-all-btn" id="askAllBtn">⬡ Ask All</button>
+        <!-- TEV Desk variant: in-app decisions repository.
+        This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+        BT8BTC, Artists, Construction Desk) do not have this feature and are not
+        scheduled to receive it. This is a commissioned product feature, not a sweep.
+        DO NOT propagate to other apps during future cross-app work. Re-evaluate per app. -->
+        <button class="ask-all-btn" id="askAllBtn">Save Decision</button>
         <button class="send-btn" id="sendBtn">Send</button>
       </div>
     </div>
@@ -261,6 +285,7 @@
       const input = document.getElementById('input');
       const sendBtn = document.getElementById('sendBtn');
       const askAllBtn = document.getElementById('askAllBtn');
+      const saveStatus = document.getElementById('saveStatus');
       const speakingBadge = document.getElementById('speakingBadge');
       let agents = [];
       let messages = [];
@@ -285,6 +310,17 @@
 
       function trimMessages(list) {
         return list.length > 320 ? list.slice(-320) : list;
+      }
+
+      function setSaveStatus(text, tone = '', showOpen = false) {
+        saveStatus.className = `save-status${tone ? ` ${tone}` : ''}`;
+        saveStatus.textContent = text;
+        if (!showOpen) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Open Decisions';
+        btn.addEventListener('click', () => window.desk.openAgent('__decisions__'));
+        saveStatus.appendChild(btn);
       }
 
       function appendUserMsg(content) {
@@ -392,6 +428,7 @@
         sending = true;
         sendBtn.disabled = true;
         askAllBtn.disabled = true;
+        setSaveStatus('');
         const bubble = appendAgentBubble(activeAgentId);
         let fullText = '';
 
@@ -424,57 +461,66 @@
         window.desk.startStream(activeAgentId, buildWarRoomMessagesForAgent(activeAgentId), [], {}, true);
       }
 
-      async function askAll() {
-        const text = input.value.trim();
-        if (!text || sending) return;
-        input.value = '';
-        appendUserMsg(text);
-        messages.push({ role: 'user', content: text, timestamp: Date.now() });
-        messages = trimMessages(messages);
-        await window.desk.saveWarRoomMessages(messages);
-        sending = true;
-        sendBtn.disabled = true;
-        askAllBtn.disabled = true;
+      function buildLatestDecisionPayload(messageList) {
+        let lastUserIndex = -1;
+        for (let i = messageList.length - 1; i >= 0; i -= 1) {
+          if (messageList[i]?.role === 'user') {
+            lastUserIndex = i;
+            break;
+          }
+        }
+        if (lastUserIndex < 0) return { error: 'Ask the room first, then save the decision.' };
+        const userQuestion = String(messageList[lastUserIndex]?.content || '').trim();
+        const transcript = messageList
+          .slice(lastUserIndex + 1)
+          .filter((msg) => msg?.role === 'assistant' && String(msg?.agentId || '').trim())
+          .map((msg) => ({ agentId: msg.agentId, text: msg.content }));
+        if (!userQuestion || !transcript.length) return { error: 'Ask the room first, then save the decision.' };
+        return { userQuestion, transcript };
+      }
 
-        const bubbles = new Map();
-        window.desk.offAskAll();
-        window.desk.onAskAllAgentChunk(({ agentId, chunk }) => {
-          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
-          const bubble = bubbles.get(agentId);
-          bubble.textContent += chunk;
-        });
-        window.desk.onAskAllAgentSearching(({ agentId, query }) => {
-          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
-          bubbles.get(agentId).textContent = `Searching: ${query}`;
-        });
-        window.desk.onAskAllAgentDone(async ({ agentId, text }) => {
-          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
-          const bubble = bubbles.get(agentId);
-          bubble.classList.remove('streaming');
-          bubble.textContent = sanitizeAssistantText(text);
-          messages.push({ role: 'assistant', agentId, content: sanitizeAssistantText(text), timestamp: Date.now() });
-          messages = trimMessages(messages);
-          await window.desk.saveWarRoomMessages(messages);
-        });
-        window.desk.onAskAllAgentError(({ agentId, error }) => {
-          if (!bubbles.has(agentId)) bubbles.set(agentId, appendAgentBubble(agentId));
-          const bubble = bubbles.get(agentId);
-          bubble.classList.remove('streaming');
-          bubble.textContent = `Error: ${error}`;
-        });
-        window.desk.onAskAllComplete(async () => {
-          sending = false;
-          sendBtn.disabled = false;
+      // TEV Desk variant: in-app decisions repository.
+      // This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+      // BT8BTC, Artists, Construction Desk) do not have this feature and are not
+      // scheduled to receive it. This is a commissioned product feature, not a sweep.
+      // DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+      async function saveDecision() {
+        if (sending) return;
+        const latestMessages = await window.desk.getWarRoomMessages();
+        const payload = buildLatestDecisionPayload(latestMessages);
+        if (payload.error) {
+          setSaveStatus(payload.error, 'error');
+          return;
+        }
+
+        askAllBtn.disabled = true;
+        setSaveStatus('Synthesizing decision…');
+        try {
+          const result = await window.desk.decisions.save(payload);
+          if (result?.ok) {
+            setSaveStatus('Decision saved.', 'success', true);
+            messages = latestMessages;
+            return;
+          }
+          if (result?.stage === 'prose') {
+            setSaveStatus('CHIEF synthesis failed — check the model is responding and try again.', 'error');
+            return;
+          }
+          if (result?.stage === 'json') {
+            const preview = String(result?.proseSynthesis || '').replace(/\s+/g, ' ').slice(0, 300);
+            setSaveStatus(`Couldn't structure the decision. Synthesis was: ${preview}${preview.length >= 300 ? '…' : ''} Try again.`, 'error');
+            return;
+          }
+          if (result?.stage === 'input') {
+            setSaveStatus('No transcript to save.', 'error');
+            return;
+          }
+          setSaveStatus(String(result?.error || 'Decision save failed.'), 'error');
+        } catch (_) {
+          setSaveStatus('CHIEF synthesis failed — check the model is responding and try again.', 'error');
+        } finally {
           askAllBtn.disabled = false;
-          await window.desk.saveWarRoomMessages(messages);
-        });
-        window.desk.onAskAllError(({ error }) => {
-          alert(error);
-          sending = false;
-          sendBtn.disabled = false;
-          askAllBtn.disabled = false;
-        });
-        window.desk.askAll(text, {});
+        }
       }
 
       async function init() {
@@ -486,10 +532,11 @@
       }
 
       document.getElementById('sendBtn').addEventListener('click', send);
-      document.getElementById('askAllBtn').addEventListener('click', askAll);
+      document.getElementById('askAllBtn').addEventListener('click', saveDecision);
       document.getElementById('clearBtn').addEventListener('click', async () => {
         messages = [];
         await window.desk.clearWarRoomMessages();
+        setSaveStatus('');
         renderMessages();
       });
       document.getElementById('uploadBtn').addEventListener('click', async () => {
