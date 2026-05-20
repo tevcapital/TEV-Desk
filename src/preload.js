@@ -57,7 +57,13 @@ contextBridge.exposeInMainWorld('desk', {
     save: (payload) => ipcRenderer.invoke('decisions:save-from-warroom', payload),
     list: () => ipcRenderer.invoke('decisions:list'),
     get: (id) => ipcRenderer.invoke('decisions:get', { id }),
-    delete: (id) => ipcRenderer.invoke('decisions:delete', { id })
+    delete: (id) => ipcRenderer.invoke('decisions:delete', { id }),
+    // TEV Desk variant: Decisions Repository chat.
+    // This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+    // BT8BTC, Artists, Construction Desk) do not have this feature and are not
+    // scheduled to receive it. This is a commissioned product feature, not a sweep.
+    // DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+    chat: (payload) => ipcRenderer.invoke('decisions:chat', payload)
   },
   getSettings: () => ipcRenderer.invoke('settings:get'),
   getGroqModels: () => ipcRenderer.invoke('settings:get-groq-models'),

@@ -275,6 +275,105 @@ function buildDecisionSynthesisPrompt(userQuestion, transcriptText) {
   return { system, user };
 }
 
+// TEV Desk variant: Decisions Repository chat.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+function clipDecisionText(value, maxChars) {
+  const text = String(value || '').trim();
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 1)).trim()}…`;
+}
+
+// TEV Desk variant: Decisions Repository chat.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+function buildDecisionRepositoryContext(decisions = []) {
+  const sorted = [...decisions].sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+  const maxTotalChars = 30000;
+  const blocks = [];
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const decision = sorted[index] || {};
+    const participants = Array.isArray(decision.participants)
+      ? decision.participants.join(', ')
+      : String(decision.participants || '').trim();
+
+    const block = [
+      `Decision ${index + 1}`,
+      `ID: ${String(decision.id || '').trim()}`,
+      `Date: ${String(decision.date || '').trim()}`,
+      `Topic: ${String(decision.topic || '').trim()}`,
+      `Theme: ${String(decision.theme || '').trim()}`,
+      `Subject: ${String(decision.subject || '').trim()}`,
+      `Participants: ${participants}`,
+      `Decision: ${clipDecisionText(decision.decisionText, 1200)}`,
+      `Rationale: ${clipDecisionText(decision.rationale, 1200)}`,
+      `Transcript excerpt: ${clipDecisionText(decision.transcriptExcerpt, 2500)}`
+    ].join('\n');
+
+    const nextText = [...blocks, block].join('\n\n');
+    if (nextText.length > maxTotalChars) break;
+    blocks.push(block);
+  }
+
+  return blocks.join('\n\n');
+}
+
+// TEV Desk variant: Decisions Repository chat.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+function buildDecisionChatMessages({ message = '', history = [], decisions = [] } = {}) {
+  const repoContext = buildDecisionRepositoryContext(decisions);
+  const safeHistory = Array.isArray(history)
+    ? history
+        .filter((entry) => ['user', 'assistant'].includes(entry?.role) && String(entry?.content || '').trim())
+        .slice(-8)
+        .map((entry) => `${entry.role.toUpperCase()}: ${clipDecisionText(entry.content, 1500)}`)
+        .join('\n\n')
+    : '';
+
+  const systemPrompt = [
+    'You are the TEV Desk Decisions Repository analyst.',
+    '',
+    'You answer questions using the saved decision records provided in context.',
+    '',
+    'Rules:',
+    '- Treat the repository as decision memory.',
+    '- Answer from saved decisions first.',
+    '- When referencing a decision, name its topic and date.',
+    '- Compare decisions when useful.',
+    '- Surface contradictions, repeated themes, open questions, and revisit triggers.',
+    '- Do not invent saved decisions that are not in the repository context.',
+    '- If the repository does not contain enough information, say so directly.',
+    '- If the user asks for general reasoning beyond the repository, clearly separate repository-grounded facts from your own analysis.',
+    '- Keep the style direct, concise, investment-grade.',
+    '- No preamble. No meta-commentary.'
+  ].join('\n');
+
+  const userPrompt = [
+    'Saved Decisions:',
+    '',
+    repoContext,
+    '',
+    'Recent Chat History:',
+    safeHistory || '(none)',
+    '',
+    'User Question:',
+    String(message || '').trim()
+  ].join('\n');
+
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ];
+}
+
 function getAgentState(agentId) {
   return store.get(`agents.${agentId}`, { documents: [], messages: [] });
 }
@@ -1580,6 +1679,52 @@ ipcMain.handle('decisions:delete', (_, { id } = {}) => {
   if (next.length === decisions.length) return { ok: false, error: 'not found' };
   store.set('decisions', next);
   return { ok: true };
+});
+
+// TEV Desk variant: Decisions Repository chat.
+// This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+// BT8BTC, Artists, Construction Desk) do not have this feature and are not
+// scheduled to receive it. This is a commissioned product feature, not a sweep.
+// DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+ipcMain.handle('decisions:chat', async (_, { message = '', history = [] } = {}) => {
+  const userMessage = String(message || '').trim();
+  if (!userMessage) return { ok: false, error: 'message required' };
+
+  const decisions = Array.isArray(store.get('decisions')) ? store.get('decisions') : [];
+  if (!decisions.length) {
+    return {
+      ok: true,
+      answer: 'No saved decisions yet. Use Save Decision in the War Room to create the first repository entry.'
+    };
+  }
+
+  const settings = store.get('settings', {});
+  const messages = buildDecisionChatMessages({
+    message: userMessage,
+    history,
+    decisions
+  });
+
+  try {
+    const rawAnswer = await completeProviderChat(messages[0].content, messages.slice(1), settings);
+    const answer = typeof sanitizeVisibleAssistantText === 'function'
+      ? sanitizeVisibleAssistantText(rawAnswer).trim()
+      : String(rawAnswer || '').trim();
+
+    return {
+      ok: true,
+      answer: answer || 'Repository chat returned an empty answer.'
+    };
+  } catch (err) {
+    console.error('[DECISIONS-CHAT] provider failed', {
+      name: err?.name,
+      message: err?.message,
+      code: err?.code,
+      status: err?.response?.status
+    });
+
+    return { ok: false, error: 'Repository chat failed' };
+  }
 });
 
 ipcMain.handle('agent:fetch-news', async (_, agentId) => fetchNewsForAgent(agentId));

@@ -35,6 +35,14 @@ DO NOT propagate to other apps during future cross-app work. Re-evaluate per app
       header p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
       main {
         padding: 18px 20px 20px;
+      }
+      .repo-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+        gap: 16px;
+        align-items: start;
+      }
+      .repo-main {
         display: flex;
         flex-direction: column;
         gap: 16px;
@@ -197,8 +205,143 @@ DO NOT propagate to other apps during future cross-app work. Re-evaluate per app
         gap: 10px;
         margin-top: 10px;
       }
+      .repo-chat-panel {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fff;
+        min-height: 620px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        overflow: hidden;
+      }
+      .chat-head {
+        border-bottom: 1px solid var(--line);
+        padding: 16px 18px 14px;
+      }
+      .chat-head h2 {
+        margin: 0;
+        font-size: 17px;
+      }
+      .chat-head p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .chat-history {
+        padding: 16px 18px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        background: linear-gradient(180deg, rgba(247, 250, 255, 0.7), rgba(255, 255, 255, 0));
+      }
+      .chat-empty {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .chat-msg {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .chat-msg.user {
+        align-items: flex-end;
+      }
+      .chat-msg.assistant {
+        align-items: flex-start;
+      }
+      .chat-role {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .chat-bubble {
+        max-width: 100%;
+        border-radius: 14px;
+        padding: 11px 12px;
+        font-size: 14px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+      .chat-msg.user .chat-bubble {
+        background: var(--accent);
+        color: #fff;
+        border-bottom-right-radius: 4px;
+      }
+      .chat-msg.assistant .chat-bubble {
+        background: #f7faff;
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-bottom-left-radius: 4px;
+      }
+      .chat-compose {
+        border-top: 1px solid var(--line);
+        padding: 14px 18px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .chat-compose textarea {
+        width: 100%;
+        min-height: 88px;
+        max-height: 180px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px 12px;
+        font: inherit;
+        font-size: 14px;
+        color: var(--ink);
+        outline: none;
+      }
+      .chat-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+      .chat-status {
+        min-height: 18px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .chat-btns {
+        display: flex;
+        gap: 8px;
+      }
+      .chat-btn {
+        border-radius: 10px;
+        padding: 9px 12px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .chat-btn.send {
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+      .chat-btn.clear {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+      }
       @media (max-width: 900px) {
         header { padding-left: 20px; }
+        .repo-shell { grid-template-columns: 1fr; }
+        .repo-chat-panel { min-height: 560px; }
+        .chat-actions {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .chat-btns {
+          width: 100%;
+          justify-content: flex-end;
+        }
         .filters { grid-template-columns: 1fr; }
         .topic { font-size: 20px; }
         .detail-top { flex-direction: column; }
@@ -211,21 +354,49 @@ DO NOT propagate to other apps during future cross-app work. Re-evaluate per app
       <p>Saved War Room decisions</p>
     </header>
     <main>
-      <section class="filters">
-        <div class="filter">
-          <label for="dateFilter">Date</label>
-          <select id="dateFilter"></select>
-        </div>
-        <div class="filter">
-          <label for="subjectFilter">Subject</label>
-          <select id="subjectFilter"></select>
-        </div>
-        <div class="filter">
-          <label for="themeFilter">Theme</label>
-          <select id="themeFilter"></select>
-        </div>
-      </section>
-      <section id="content"></section>
+      <div class="repo-shell">
+        <section class="repo-main">
+          <section class="filters">
+            <div class="filter">
+              <label for="dateFilter">Date</label>
+              <select id="dateFilter"></select>
+            </div>
+            <div class="filter">
+              <label for="subjectFilter">Subject</label>
+              <select id="subjectFilter"></select>
+            </div>
+            <div class="filter">
+              <label for="themeFilter">Theme</label>
+              <select id="themeFilter"></select>
+            </div>
+          </section>
+          <section id="content"></section>
+        </section>
+        <!--
+        TEV Desk variant: Decisions Repository chat.
+        This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+        BT8BTC, Artists, Construction Desk) do not have this feature and are not
+        scheduled to receive it. This is a commissioned product feature, not a sweep.
+        DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+        -->
+        <aside class="repo-chat-panel">
+          <div class="chat-head">
+            <h2>Repository Chat</h2>
+            <p>Ask across saved decisions</p>
+          </div>
+          <div class="chat-history" id="chatHistory"></div>
+          <div class="chat-compose">
+            <textarea id="chatInput" placeholder="Ask about saved decisions…"></textarea>
+            <div class="chat-actions">
+              <div class="chat-status" id="chatStatus"></div>
+              <div class="chat-btns">
+                <button type="button" class="chat-btn clear" id="clearChatBtn">Clear</button>
+                <button type="button" class="chat-btn send" id="sendChatBtn">Send</button>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </main>
 
     <script>
@@ -233,10 +404,17 @@ DO NOT propagate to other apps during future cross-app work. Re-evaluate per app
       const subjectFilter = document.getElementById('subjectFilter');
       const themeFilter = document.getElementById('themeFilter');
       const content = document.getElementById('content');
+      const chatHistory = document.getElementById('chatHistory');
+      const chatInput = document.getElementById('chatInput');
+      const sendChatBtn = document.getElementById('sendChatBtn');
+      const clearChatBtn = document.getElementById('clearChatBtn');
+      const chatStatus = document.getElementById('chatStatus');
 
       let decisions = [];
       let activeDecisionId = null;
       let confirmDelete = false;
+      let chatMessages = [];
+      let chatLoading = false;
 
       function formatDisplayDate(value) {
         if (!value) return '';
@@ -415,16 +593,123 @@ DO NOT propagate to other apps during future cross-app work. Re-evaluate per app
         renderList();
       }
 
+      function scrollChatToBottom() {
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+      }
+
+      function setChatStatus(text = '') {
+        chatStatus.textContent = text;
+      }
+
+      function setChatLoadingState(loading) {
+        chatLoading = loading;
+        sendChatBtn.disabled = loading;
+        chatInput.disabled = loading;
+      }
+
+      // TEV Desk variant: Decisions Repository chat.
+      // This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+      // BT8BTC, Artists, Construction Desk) do not have this feature and are not
+      // scheduled to receive it. This is a commissioned product feature, not a sweep.
+      // DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+      function renderChat() {
+        chatHistory.innerHTML = '';
+        if (!chatMessages.length) {
+          const empty = document.createElement('div');
+          empty.className = 'chat-empty';
+          empty.textContent = 'Ask a question about your saved decisions.';
+          chatHistory.appendChild(empty);
+          return;
+        }
+
+        chatMessages.forEach((message) => {
+          const wrap = document.createElement('div');
+          wrap.className = `chat-msg ${message.role}`;
+
+          const role = document.createElement('div');
+          role.className = 'chat-role';
+          role.textContent = message.role === 'user' ? 'You' : 'Repository';
+
+          const bubble = document.createElement('div');
+          bubble.className = 'chat-bubble';
+          bubble.textContent = String(message.content || '');
+
+          wrap.appendChild(role);
+          wrap.appendChild(bubble);
+          chatHistory.appendChild(wrap);
+        });
+
+        scrollChatToBottom();
+      }
+
+      // TEV Desk variant: Decisions Repository chat.
+      // This feature exists in TEV Desk only. Other TEV apps (Loop, Agents, Board PH,
+      // BT8BTC, Artists, Construction Desk) do not have this feature and are not
+      // scheduled to receive it. This is a commissioned product feature, not a sweep.
+      // DO NOT propagate to other apps during future cross-app work. Re-evaluate per app.
+      async function sendRepositoryChat(messageOverride = '') {
+        if (chatLoading) return;
+        const message = String(messageOverride || chatInput.value || '').trim();
+        if (!message) return;
+
+        chatMessages.push({ role: 'user', content: message });
+        renderChat();
+        chatInput.value = '';
+        setChatStatus('Thinking…');
+        setChatLoadingState(true);
+
+        try {
+          const result = await window.desk.decisions.chat({
+            message,
+            history: chatMessages
+          });
+          if (result?.ok) {
+            chatMessages.push({
+              role: 'assistant',
+              content: String(result.answer || 'Repository chat returned an empty answer.')
+            });
+          } else {
+            chatMessages.push({
+              role: 'assistant',
+              content: 'Repository chat failed — try again.'
+            });
+          }
+        } catch (_) {
+          chatMessages.push({
+            role: 'assistant',
+            content: 'Repository chat failed — try again.'
+          });
+        } finally {
+          setChatLoadingState(false);
+          setChatStatus('');
+          renderChat();
+          chatInput.focus();
+        }
+      }
+
       async function init() {
         const result = await window.desk.decisions.list();
         decisions = Array.isArray(result?.decisions) ? result.decisions : [];
         populateFilters();
         render();
+        renderChat();
       }
 
       dateFilter.addEventListener('change', render);
       subjectFilter.addEventListener('change', render);
       themeFilter.addEventListener('change', render);
+      sendChatBtn.addEventListener('click', () => sendRepositoryChat());
+      clearChatBtn.addEventListener('click', () => {
+        chatMessages = [];
+        setChatStatus('');
+        renderChat();
+      });
+      chatInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          sendRepositoryChat();
+        }
+      });
 
       init();
     </script>
